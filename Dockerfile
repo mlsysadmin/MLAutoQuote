@@ -3,8 +3,7 @@
 # M Lhuillier AutoQuote — production image for Google Cloud Run.
 #
 # Multi-stage so the final image carries the standalone Next server, the static
-# assets and the Prisma engine, and nothing else. That keeps the pull small and
-# the cold start short, which is what the customer actually feels.
+# assets and the Prisma engine, and nothing else.
 
 FROM node:22-slim AS base
 RUN apt-get update -y \
@@ -33,19 +32,19 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-# Cloud Run always sends traffic to $PORT; 8080 is its default.
+# Cloud Run injects $PORT; default to 8080.
 ENV PORT=8080
 ENV HOSTNAME=0.0.0.0
 
 RUN groupadd --system --gid 1001 nodejs \
  && useradd --system --uid 1001 --gid nodejs nextjs
 
-# Standalone server + the assets it serves.
+# Standalone server + static assets
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Prisma schema, migrations and CLI so `migrate deploy` can run at startup.
+# Prisma assets for migrations
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
@@ -57,5 +56,6 @@ RUN chmod +x docker-entrypoint.sh
 USER nextjs
 EXPOSE 8080
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
+# Use standard string format or pass port explicitly to the server
+ENTRYPOINT ["/bin/sh", "./docker-entrypoint.sh"]
 CMD ["node", "server.js"]
