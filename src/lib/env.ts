@@ -35,7 +35,26 @@ export const env = {
     return secret;
   },
 
-  appUrl: process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+  /**
+   * The site's public origin.
+   *
+   * `NEXT_PUBLIC_*` values are inlined into the bundle at build time, so on
+   * their own they would bake whatever the builder happened to have — which on
+   * Cloud Build is nothing, and a sitemap full of localhost URLs. `APP_URL` is
+   * an ordinary server variable, readable at runtime, and takes precedence
+   * wherever the value is needed at request time (robots, sitemap).
+   *
+   * Statically rendered canonicals still resolve at build time, so
+   * NEXT_PUBLIC_APP_URL must also be passed as a Docker build argument. See
+   * DEPLOYMENT.md.
+   */
+  get appUrl(): string {
+    return (
+      process.env.APP_URL ??
+      process.env.NEXT_PUBLIC_APP_URL ??
+      "http://localhost:3000"
+    );
+  },
 
   storage: {
     driver: (process.env.STORAGE_DRIVER ?? "local") as "local" | "gcs",

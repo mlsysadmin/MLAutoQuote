@@ -3,72 +3,79 @@
 /* ───────────────────────────────────────────────────────────────────────────
    M Lhuillier AutoQuote — design tokens
 
-   The brand pairs a deep signal red with a warm gold on near-black text. Red
-   carries identity and the single primary action on a screen; gold marks the
-   offer itself and nothing else, so the number a customer came for is the one
-   thing on the page wearing it.
+   Taken from mlhuillier.com as it is built today: Poppins throughout, a vivid
+   red for the word that carries the message, orange for the one action we want
+   taken, charcoal for every other action, and sections that alternate white and
+   #F5F5F5. Buttons are pills; cards are generously rounded.
 
-   Swap the three brand values below for the exact figures in your brand book
-   and the whole app follows — nothing hard-codes a hex value.
+   Orange is reserved for the primary call to action, which is always large —
+   white on #FF5F00 clears 3:1, the bar for large text, but not the 4.5:1 that
+   body-sized text needs. Charcoal #333 is the workhorse for everything smaller,
+   exactly as the main site uses it.
    ─────────────────────────────────────────────────────────────────────────── */
 
 @theme {
-  /* Brand */
-  --color-ml-red-50: #fff1f0;
-  --color-ml-red-100: #ffddda;
-  --color-ml-red-200: #ffbdb7;
-  --color-ml-red-300: #ff9087;
-  --color-ml-red-400: #fa5a4d;
-  --color-ml-red-500: #e2231a;
-  --color-ml-red-600: #c8120c;
-  --color-ml-red-700: #a50f0a;
-  --color-ml-red-800: #86120f;
-  --color-ml-red-900: #701512;
+  /* Primary action */
+  --color-ml-orange-50: #fff4ed;
+  --color-ml-orange-100: #ffe4d1;
+  --color-ml-orange-200: #ffc49e;
+  --color-ml-orange-300: #ff9c5e;
+  --color-ml-orange-400: #ff7a2e;
+  --color-ml-orange-500: #ff5f00; /* the brand orange */
+  --color-ml-orange-600: #e04f00;
+  --color-ml-orange-700: #cc4400; /* passes 4.5:1 on white, for orange text */
+  --color-ml-orange-800: #a33600;
 
-  --color-ml-gold-50: #fffaeb;
-  --color-ml-gold-100: #fff1c6;
-  --color-ml-gold-200: #ffe288;
-  --color-ml-gold-300: #ffcd4a;
-  --color-ml-gold-400: #ffc20e;
-  --color-ml-gold-500: #f0a500;
-  --color-ml-gold-600: #d07c02;
-  --color-ml-gold-700: #a65708;
-  --color-ml-gold-800: #88440e;
-  --color-ml-gold-900: #73380f;
+  /* Emphasis red — headline words, destructive states */
+  --color-ml-red-50: #fff1f1;
+  --color-ml-red-100: #ffdcdc;
+  --color-ml-red-200: #ffbaba;
+  --color-ml-red-300: #ff8585;
+  --color-ml-red-400: #ff3b3b;
+  --color-ml-red-500: #fa0000; /* the brand red */
+  --color-ml-red-600: #d40000;
+  --color-ml-red-700: #be0404; /* the logo red */
+  --color-ml-red-800: #9b0505;
 
-  /* Neutrals — very slightly warm, so they sit with the red rather than fight it */
-  --color-ink-50: #f8f7f6;
-  --color-ink-100: #efeeec;
-  --color-ink-200: #dddbd8;
-  --color-ink-300: #c2bfba;
-  --color-ink-400: #a09c96;
-  --color-ink-500: #827d77;
-  --color-ink-600: #6a655f;
-  --color-ink-700: #56524e;
-  --color-ink-800: #3a3734;
-  --color-ink-900: #1f1d1b;
-  --color-ink-950: #121110;
+  /* Neutrals, straight off the site */
+  --color-ink-50: #fafafa;
+  --color-ink-100: #f5f5f5;
+  --color-ink-200: #e5e5e5;
+  --color-ink-300: #d1d5db;
+  --color-ink-400: #9a9a9a;
+  --color-ink-500: #767676;
+  --color-ink-600: #5d5d5d;
+  --color-ink-700: #444444;
+  --color-ink-800: #333333;
+  --color-ink-900: #111111;
+  /* Pure black is harsh on a phone screen; this is the darkest we go. */
+  --color-ink-950: #0a0a0a;
 
   /* Status */
-  --color-ok: #0f8a4a;
-  --color-ok-bg: #e8f7ee;
-  --color-warn: #a65708;
-  --color-warn-bg: #fff6e3;
-  --color-danger: #c8120c;
-  --color-danger-bg: #ffeceb;
+  --color-ok: #0f7a3d;
+  --color-ok-bg: #e8f6ed;
+  --color-warn: #9a4f00;
+  --color-warn-bg: #fff3e6;
+  --color-danger: #be0404;
+  --color-danger-bg: #fff1f1;
 
-  /* A system stack: no webfont request, so the first paint is the real paint.
-     On a slow mobile connection this is worth more than any font choice. */
+  /* Poppins is wired up in layout.tsx via next/font, which self-hosts the
+     files — no request to Google at runtime. */
   --font-sans:
-    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    var(--font-poppins), ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
   --font-mono:
     ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
-  --radius-card: 1rem;
+  --radius-pill: 999px;
+  --radius-card: 20px;
 
-  --shadow-card: 0 1px 2px rgb(31 29 27 / 0.04), 0 4px 16px rgb(31 29 27 / 0.06);
-  --shadow-lift: 0 2px 6px rgb(31 29 27 / 0.06), 0 12px 32px rgb(31 29 27 / 0.1);
+  /* Elevation, measured off mlhuillier.com: one resting shadow used almost
+     everywhere, and a deeper one for hover and for anything that should read
+     as lifted off the page. Cards sit on #F5F5F5 so they actually float. */
+  --shadow-card: 0 4px 12px rgb(0 0 0 / 0.08);
+  --shadow-card-lift: 0 10px 30px rgb(0 0 0 / 0.15);
+  --shadow-card-sm: 0 1px 10px rgb(0 0 0 / 0.09);
 }
 
 @layer base {
@@ -82,17 +89,14 @@
   }
 
   body {
-    background: var(--color-ink-50);
+    background: #ffffff;
     color: var(--color-ink-900);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
   }
 
-  /* Headings carry the weight; body text stays comfortable at arm's length on
-     a phone, which is where most of these submissions will be filled in. */
   h1, h2, h3 {
-    letter-spacing: -0.02em;
+    letter-spacing: -0.01em;
     text-wrap: balance;
   }
 
@@ -100,16 +104,20 @@
     text-wrap: pretty;
   }
 
-  /* One focus treatment everywhere, visible on both light and red surfaces. */
   :focus-visible {
-    outline: 2px solid var(--color-ml-red-500);
+    outline: 2px solid var(--color-ml-orange-600);
     outline-offset: 2px;
-    border-radius: 4px;
+    border-radius: 6px;
   }
 
   /* iOS zooms the page when a focused input is under 16px. */
   input, select, textarea {
     font-size: max(16px, 1rem);
+  }
+
+  /* Phones are the common case here, so taps get a real target. */
+  button, [role="button"], a {
+    -webkit-tap-highlight-color: rgb(255 95 0 / 0.12);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -123,17 +131,13 @@
 }
 
 @layer utilities {
-  .bg-ml-gradient {
-    background-image:
-      radial-gradient(ellipse 80% 60% at 20% -10%, #ffffff22, transparent 60%),
-      linear-gradient(145deg, var(--color-ml-red-700), var(--color-ml-red-500) 55%, var(--color-ml-red-600));
+  /* The orange band the main site uses to break up white sections. */
+  .bg-ml-orange-band {
+    background: var(--color-ml-orange-500);
   }
 
-  /* The subtle warm wash behind the marketing surfaces. */
   .bg-ml-wash {
-    background-image:
-      radial-gradient(ellipse 70% 50% at 85% 0%, var(--color-ml-gold-100), transparent 65%),
-      radial-gradient(ellipse 60% 45% at 0% 10%, var(--color-ml-red-50), transparent 60%);
+    background: var(--color-ink-100);
   }
 
   .shimmer {
@@ -152,11 +156,11 @@
   }
 
   .animate-rise {
-    animation: rise 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: rise 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
   @keyframes rise {
-    from { opacity: 0; transform: translateY(8px); }
+    from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: none; }
   }
 

@@ -315,10 +315,54 @@ npm run migrate:dev -- --name describe_your_change
 
 ---
 
+## Search and the public pages
+
+Without the value guides this site has one indexable page, so there is nothing
+to rank for. `/value` generates a page per make and per model — 272 static
+pages — each answering a question people actually type ("what is a 2019 Toyota
+Fortuner worth") with a year-by-year table derived from the same reference
+model the valuation engine uses.
+
+Guides are limited to nameplates still sold or discontinued within ten years.
+A few hundred near-identical pages is how a site earns a thin-content problem
+rather than traffic.
+
+Also in place: `metadataBase` with canonical URLs, Open Graph and Twitter
+cards, JSON-LD for `AutoDealer`, `WebSite`, `FAQPage`, `BreadcrumbList` and a
+`WebPage`/`Car` pair per guide, and a sitemap covering all 274 URLs.
+
+> **The public origin must be passed at build time.** Canonical and Open Graph
+> URLs on statically rendered pages are fixed when the image is built, so pass
+> `--build-arg NEXT_PUBLIC_APP_URL=https://your-domain`. `robots.txt` and the
+> sitemap read `APP_URL` at runtime instead, so those are right immediately.
+> `scripts/deploy.ps1` handles both; see PACKAGE.md.
+
+## Cross-selling
+
+`CrossSell` places M Lhuillier's other products where the customer's situation
+makes them useful — never inside the wizard, where an interruption costs more
+in abandoned submissions than it could return. A declined offer leaves someone
+with the problem that brought them here, so that placement gets the prominent
+treatment and leads with the pawnshop product; an accepted one gets a quiet
+footer. Every tile deep-links to the live product page with a UTM so the web
+team can attribute it.
+
 ## Brand
 
-Colours live as tokens at the top of
-[`src/app/globals.css`](src/app/globals.css) — swap the three brand ramps for
-the exact values in your brand book and the whole app follows. The monogram in
-[`src/components/ui/Logo.tsx`](src/components/ui/Logo.tsx) is a stand-in; drop
-the official artwork into `public/brand/` and swap that one component.
+Taken from mlhuillier.com as it is built today: **Poppins** throughout, vivid
+red `#FA0000` for the word that carries the message, orange `#FF5F00` for the
+one action we want taken, charcoal `#333` for every other action, sections
+alternating white and `#F5F5F5`, pill buttons and 20px cards resting on
+`0 4px 12px rgb(0 0 0 / .08)`.
+
+Orange is reserved for the primary call to action, which is always large —
+white on `#FF5F00` clears the 3:1 bar for large text but not the 4.5:1 that
+body-sized text needs. That constraint is enforced in
+[`button-styles.ts`](src/components/ui/button-styles.ts): the `cta` variant is
+orange, everything smaller is charcoal.
+
+All of it lives as tokens at the top of
+[`src/app/globals.css`](src/app/globals.css). The wordmark in
+[`src/components/ui/Logo.tsx`](src/components/ui/Logo.tsx) is drawn as text
+plus one inline diamond — the official SVG is a 45 KB bitmap in a wrapper,
+which would cost more to load than the rest of the page.

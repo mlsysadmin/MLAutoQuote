@@ -94,19 +94,28 @@ export const EMPTY_DRAFT: Draft = {
   consentGiven: false,
 };
 
-export const STEP_LABELS = [
-  "Your car",
-  "Details",
-  "Condition",
-  "Papers",
-  "Photos",
-  "Contact",
-  "Review",
-];
+/**
+ * Four steps, not seven.
+ *
+ * Each transition is a moment someone can decide they have better things to
+ * do, so related questions are grouped rather than spread thin — one scroll
+ * beats three taps on a phone.
+ */
+export const STEP_LABELS = ["Your car", "Condition", "Photos", "You"];
 
 export const TOTAL_STEPS = STEP_LABELS.length;
 
-/** Photo slots, in the order the customer is asked for them. */
+/** Roughly how long each step takes, shown so the end is always in sight. */
+export const STEP_MINUTES = [1, 1, 2, 1];
+
+/**
+ * Photo slots, in the order the customer is asked for them.
+ *
+ * Only five are required. Nine was enough to lose people at the photo step,
+ * and the offer is provisional pending a branch inspection anyway — the rest
+ * are marked `recommended`, which the UI frames as "gets you a firmer offer"
+ * rather than as another hurdle.
+ */
 export const PHOTO_SLOTS = [
   {
     slot: "FRONT_34",
@@ -121,28 +130,31 @@ export const PHOTO_SLOTS = [
     required: true,
   },
   {
-    slot: "LEFT_SIDE",
-    label: "Left side",
-    hint: "Whole car in frame, taken straight on.",
-    required: true,
-  },
-  {
-    slot: "RIGHT_SIDE",
-    label: "Right side",
-    hint: "Whole car in frame, taken straight on.",
-    required: true,
-  },
-  {
     slot: "DASH_ODOMETER",
     label: "Odometer",
     hint: "Engine on so the mileage reads clearly.",
     required: true,
   },
   {
+    slot: "LEFT_SIDE",
+    label: "Left side",
+    hint: "Whole car in frame, taken straight on.",
+    required: false,
+    recommended: true,
+  },
+  {
+    slot: "RIGHT_SIDE",
+    label: "Right side",
+    hint: "Whole car in frame, taken straight on.",
+    required: false,
+    recommended: true,
+  },
+  {
     slot: "INTERIOR_FRONT",
     label: "Front interior",
     hint: "From the rear seat, showing both front seats and the dashboard.",
-    required: true,
+    required: false,
+    recommended: true,
   },
   {
     slot: "INTERIOR_REAR",
@@ -155,6 +167,7 @@ export const PHOTO_SLOTS = [
     label: "Engine bay",
     hint: "Hood open, engine cold.",
     required: false,
+    recommended: true,
   },
   {
     slot: "TIRES",
@@ -180,17 +193,23 @@ export const PHOTO_SLOTS = [
     slot: "DOC_OR",
     label: "Official Receipt",
     hint: "Your most recent one.",
-    required: true,
+    required: false,
+    recommended: true,
     isDocument: true,
   },
   {
     slot: "DOC_ID",
     label: "Your government ID",
-    hint: "The one you entered on the next step. Make sure the name and number are readable.",
+    hint: "Any current government ID. The name and number need to be readable.",
     required: true,
     isDocument: true,
   },
 ] as const;
+
+/** Slots we ask for but don't block on — framed as "firms up your offer". */
+export const RECOMMENDED_SLOTS = PHOTO_SLOTS.filter(
+  (s) => "recommended" in s && s.recommended,
+).map((s) => s.slot);
 
 export type PhotoSlotSpec = (typeof PHOTO_SLOTS)[number];
 
@@ -236,19 +255,26 @@ export const CONDITION_GRADES = [
   },
 ];
 
-/** Which steps are complete, used for the stepper and the review page. */
+/** Which steps are complete, used by the stepper and the submit guard. */
 export function stepCompletion(draft: Draft, photoSlots: Set<string>) {
   return {
-    1: Boolean(draft.make && draft.model && draft.year),
-    2: Boolean(draft.transmission && draft.fuelType && draft.mileageKm !== null),
-    3: Boolean(
+    1: Boolean(
+      draft.make &&
+        draft.model &&
+        draft.year &&
+        draft.transmission &&
+        draft.fuelType &&
+        draft.mileageKm !== null,
+    ),
+    2: Boolean(
       draft.conditionGrade &&
         draft.hasAccidentHistory !== null &&
-        draft.isFloodDamaged !== null,
+        draft.isFloodDamaged !== null &&
+        draft.hasCR !== null &&
+        draft.hasOR !== null,
     ),
-    4: draft.hasCR !== null && draft.hasOR !== null,
-    5: REQUIRED_SLOTS.every((s) => photoSlots.has(s)),
-    6: Boolean(
+    3: REQUIRED_SLOTS.every((s) => photoSlots.has(s)),
+    4: Boolean(
       draft.customerName &&
         draft.customerPhone &&
         draft.birthDate &&
@@ -256,6 +282,5 @@ export function stepCompletion(draft: Draft, photoSlots: Set<string>) {
         draft.idNumber &&
         draft.consentGiven,
     ),
-    7: true,
   } as Record<number, boolean>;
 }

@@ -6,6 +6,7 @@ import { formatPeso, formatKm } from "@/lib/money";
 import type { OfferBreakdown } from "@/lib/valuation";
 import { Logo, Badge } from "@/components/ui";
 import { OfferResponse } from "@/components/OfferResponse";
+import { CrossSell } from "@/components/CrossSell";
 
 export const metadata: Metadata = {
   title: "Your offer",
@@ -113,16 +114,22 @@ export default async function TrackPage({ params }: Params) {
             </div>
 
             {/* ── The number ─────────────────────────────────────────── */}
-            <div className="bg-ml-gradient animate-rise mt-6 overflow-hidden rounded-3xl text-white shadow-[0_8px_40px_rgb(200_18_12/0.25)]">
+            {/* The brand's accent surface, carrying the one number the
+                customer came for. */}
+            <div className="animate-rise mt-6 overflow-hidden rounded-[20px] bg-ml-orange-500 text-white shadow-[0_10px_30px_rgb(255_95_0/0.3)]">
+              {/* Only the figure is big enough for white on orange to clear
+                  contrast. The supporting lines are solid white at a larger
+                  size, and the appraiser's message — a full paragraph — sits
+                  on white where it can be read properly. */}
               <div className="px-6 py-8 text-center sm:px-10 sm:py-10">
-                <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/70">
+                <p className="text-sm font-bold uppercase tracking-[0.18em] text-white">
                   Our offer
                 </p>
                 <p className="mt-2 text-5xl font-extrabold tracking-tight nums sm:text-6xl">
                   {formatPeso(offer.finalOfferPhp ?? offer.systemOfferPhp)}
                 </p>
                 {offer.validUntil ? (
-                  <p className="mt-3 text-sm text-white/80">
+                  <p className="mt-3 text-base font-semibold text-white">
                     {expired ? "Expired on " : "Valid until "}
                     {offer.validUntil.toLocaleDateString("en-PH", {
                       day: "numeric",
@@ -134,8 +141,8 @@ export default async function TrackPage({ params }: Params) {
               </div>
 
               {offer.customerMessage ? (
-                <div className="border-t border-white/15 bg-black/10 px-6 py-4 sm:px-10">
-                  <p className="text-sm leading-relaxed text-white/90">
+                <div className="bg-white px-6 py-4 sm:px-10">
+                  <p className="text-sm leading-relaxed text-ink-800">
                     {offer.customerMessage}
                   </p>
                 </div>
@@ -182,7 +189,7 @@ export default async function TrackPage({ params }: Params) {
                           rel="noreferrer nofollow"
                           className={`flex items-center justify-between gap-4 rounded-2xl bg-white px-5 py-4 ring-1 transition-shadow hover:shadow-md ${
                             bucket === "MID"
-                              ? "ring-2 ring-ml-gold-400"
+                              ? "ring-2 ring-ml-orange-400"
                               : "ring-ink-200/70"
                           }`}
                         >
@@ -225,6 +232,15 @@ export default async function TrackPage({ params }: Params) {
               breakdown={offer.breakdown as unknown as OfferBreakdown | null}
             />
 
+            {/* A declined offer leaves the customer with the problem that
+                brought them here, so this is where the cross-sell earns its
+                place. An accepted one gets the quieter treatment. */}
+            <div className="mt-10">
+              <CrossSell
+                placement={offer.status === "DECLINED" ? "declined" : "accepted"}
+              />
+            </div>
+
             <section className="mt-10 rounded-2xl bg-ink-900 px-6 py-7 text-white sm:px-8">
               <h2 className="text-lg font-extrabold">If you accept</h2>
               <ol className="mt-4 space-y-3 text-sm text-white/85">
@@ -234,7 +250,7 @@ export default async function TrackPage({ params }: Params) {
                   "Papers are signed and you're paid the same day.",
                 ].map((step, i) => (
                   <li key={step} className="flex gap-3">
-                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-ml-gold-400 text-[0.7rem] font-black text-ink-950">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-ml-orange-400 text-[0.7rem] font-black text-ink-950">
                       {i + 1}
                     </span>
                     {step}
@@ -291,10 +307,10 @@ function PendingState({
   return (
     <div className="animate-rise">
       <div className="rounded-3xl bg-white p-7 text-center ring-1 ring-ink-200/70 sm:p-10">
-        <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-ml-gold-100">
+        <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-ml-orange-100">
           <svg
             viewBox="0 0 24 24"
-            className="size-7 text-ml-gold-700"
+            className="size-7 text-ml-orange-700"
             aria-hidden="true"
           >
             <circle
@@ -331,7 +347,7 @@ function PendingState({
                   stage.done
                     ? "bg-[var(--color-ok)] text-white"
                     : stage.active
-                      ? "bg-ml-gold-400 text-ink-950"
+                      ? "bg-ml-orange-400 text-ink-950"
                       : "bg-ink-200 text-ink-500"
                 }`}
               >
@@ -379,6 +395,11 @@ function PendingState({
       <p className="mt-6 text-center text-sm text-ink-600">
         Bookmark this page — it&apos;s where your offer will appear.
       </p>
+
+      {/* They have a day to wait and may need the money sooner than that. */}
+      <div className="mt-8">
+        <CrossSell placement="waiting" />
+      </div>
     </div>
   );
 }

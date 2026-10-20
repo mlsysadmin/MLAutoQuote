@@ -1,0 +1,32 @@
+# Builds and pushes the image only — scripts/deploy.ps1 does the deploy itself.
+#
+# Exists so the public origin can be passed as a build argument, which
+# `gcloud builds submit --tag` has no way to do. Canonical and Open Graph URLs
+# on the statically rendered pages are fixed at build time.
+#
+#   gcloud builds submit --config=cloudbuild-image.yaml \
+#     --substitutions=_IMAGE=REGION-docker.pkg.dev/PROJECT/REPO/SERVICE:TAG,_SITE_URL=https://example.com
+
+substitutions:
+  _IMAGE: ""
+  _SITE_URL: ""
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+images:
+  - "${_IMAGE}"
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg
+      - "NEXT_PUBLIC_APP_URL=${_SITE_URL}"
+      - -t
+      - "${_IMAGE}"
+      - .
+
+timeout: 1800s

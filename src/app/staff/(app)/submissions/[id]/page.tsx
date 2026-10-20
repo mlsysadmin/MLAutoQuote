@@ -344,7 +344,7 @@ export default async function SubmissionDetailPage({ params }: Params) {
             <CardBody>
               {submission.customer &&
               submission.customer.submissions.length > 0 ? (
-                <div className="mb-4 rounded-xl bg-ml-gold-50 px-4 py-3 ring-1 ring-ml-gold-300">
+                <div className="mb-4 rounded-xl bg-ml-orange-50 px-4 py-3 ring-1 ring-ml-orange-300">
                   <p className="text-sm font-semibold text-ink-900">
                     This customer has brought in{" "}
                     {submission.customer.submissions.length + 1} vehicles.

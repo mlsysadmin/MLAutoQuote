@@ -1,4 +1,7 @@
-export { Button, ButtonLink, Spinner } from "./Button";
+export { Button, Spinner } from "./Button";
+export { ButtonLink } from "./ButtonLink";
+export { buttonClass } from "./button-styles";
+export type { ButtonVariant, ButtonSize } from "./button-styles";
 export { Card, CardHeader, CardBody, Divider, DataRow } from "./Card";
 export {
   Field,

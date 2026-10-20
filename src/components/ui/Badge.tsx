@@ -9,7 +9,7 @@ const TONES: Record<Tone, string> = {
   warn: "bg-[var(--color-warn-bg)] text-[var(--color-warn)] ring-amber-200",
   danger: "bg-ml-red-50 text-ml-red-700 ring-ml-red-200",
   info: "bg-sky-50 text-sky-700 ring-sky-200",
-  gold: "bg-ml-gold-100 text-ml-gold-800 ring-ml-gold-300",
+  gold: "bg-ml-orange-100 text-ml-orange-800 ring-ml-orange-300",
 };
 
 export function Badge({

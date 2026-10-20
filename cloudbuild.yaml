@@ -12,6 +12,7 @@ substitutions:
   _SERVICE: ml-autoquote
   _REPO: ml-autoquote
   _INSTANCE: "" # Cloud SQL connection name: PROJECT:REGION:INSTANCE
+  _SITE_URL: "" # public origin, e.g. https://autoquote.mlhuillier.com
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -35,6 +36,11 @@ steps:
     name: gcr.io/cloud-builders/docker
     args:
       - build
+      # Bakes the public origin into canonical and Open Graph URLs. Leave
+      # _SITE_URL unset on the very first build, then rebuild once the service
+      # URL exists — or set it to your custom domain from the start.
+      - --build-arg
+      - "NEXT_PUBLIC_APP_URL=${_SITE_URL}"
       - --cache-from
       - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:latest"
       - -t
@@ -72,5 +78,8 @@ steps:
       - --cpu-boost
       - --timeout=60
       - --add-cloudsql-instances=${_INSTANCE}
+      # The container must never wait on the database to start listening on
+      # $PORT. Migrations run separately — see scripts/migrate-job.ps1.
+      - --update-env-vars=SKIP_MIGRATIONS=true
 
 timeout: 1800s

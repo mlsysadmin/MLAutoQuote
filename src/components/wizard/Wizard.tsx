@@ -11,13 +11,10 @@ import {
   stepCompletion,
   type Draft,
 } from "@/lib/wizard";
-import { StepVehicle } from "./StepVehicle";
-import { StepSpecs } from "./StepSpecs";
-import { StepCondition } from "./StepCondition";
-import { StepDocuments } from "./StepDocuments";
+import { StepCar } from "./StepCar";
+import { StepCheck } from "./StepCheck";
 import { StepPhotos, type UploadedPhoto } from "./StepPhotos";
-import { StepContact } from "./StepContact";
-import { StepReview } from "./StepReview";
+import { StepYou } from "./StepYou";
 
 const LOCAL_KEY = "mlaq.draft.v1";
 const AUTOSAVE_MS = 900;
@@ -32,8 +29,14 @@ type Persisted = {
 
 export type SaveState = "idle" | "saving" | "saved" | "error";
 
-export function Wizard() {
+export function Wizard({
+  prefill,
+}: {
+  /** Set when the customer arrived from a value guide for a specific model. */
+  prefill?: Partial<Draft>;
+} = {}) {
   const router = useRouter();
+  const [resumed, setResumed] = useState(false);
 
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [step, setStep] = useState(1);
@@ -73,12 +76,18 @@ export function Wizard() {
           setRefCode(saved.refCode ?? null);
           setStep(step);
           setFurthest(step);
+          // Say so rather than silently dropping them mid-form.
+          if (step > 1) setResumed(true);
         }
+      } else if (prefill) {
+        setDraft({ ...EMPTY_DRAFT, ...prefill });
       }
     } catch {
       // A corrupt draft shouldn't block someone from starting over.
     }
     setRestored(true);
+    // Runs once on mount; `prefill` comes from the URL and can't change after.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -216,31 +225,31 @@ export function Wizard() {
   }, [submissionId, draft]);
 
   // ── Navigation ─────────────────────────────────────────────────────────────
-  const photoSlots = useMemo(
-    () => new Set(photos.map((p) => p.slot)),
-    [photos],
-  );
+  // Steps the customer has actually finished, so the stepper can tick them off
+  // rather than just colouring in whatever is behind the cursor.
   const completion = useMemo(
-    () => stepCompletion(draft, photoSlots),
-    [draft, photoSlots],
+    () => stepCompletion(draft, new Set(photos.map((p) => p.slot))),
+    [draft, photos],
   );
 
   const validateStep = useCallback(
     (n: number): Record<string, string> => {
       const e: Record<string, string> = {};
+
+      // 1 — the car
       if (n === 1) {
         if (!draft.make) e.make = "Choose the make.";
         if (!draft.model) e.model = "Choose the model.";
-        if (!draft.year) e.year = "Choose the model year.";
-      }
-      if (n === 2) {
+        if (!draft.year) e.year = "Choose the year.";
         if (!draft.transmission) e.transmission = "Choose the transmission.";
         if (!draft.fuelType) e.fuelType = "Choose the fuel type.";
         if (draft.mileageKm === null || draft.mileageKm < 0) {
           e.mileageKm = "Enter the odometer reading.";
         }
       }
-      if (n === 3) {
+
+      // 2 — condition and papers
+      if (n === 2) {
         if (!draft.conditionGrade) e.conditionGrade = "Pick the closest match.";
         if (draft.hasAccidentHistory === null) {
           e.hasAccidentHistory = "Please answer this.";
@@ -248,15 +257,17 @@ export function Wizard() {
         if (draft.isFloodDamaged === null) {
           e.isFloodDamaged = "Please answer this.";
         }
-      }
-      if (n === 4) {
         if (draft.hasCR === null) e.hasCR = "Please answer this.";
         if (draft.hasOR === null) e.hasOR = "Please answer this.";
         if (draft.isUnderFinancing && !draft.financingBalance) {
           e.financingBalance = "Enter the remaining balance.";
         }
       }
-      if (n === 6) {
+
+      // 3 — photos never block; the summary on step 4 nudges instead.
+
+      // 4 — who you are
+      if (n === 4) {
         if (!draft.customerName.trim()) e.customerName = "Enter your full name.";
         if (!/^(\+?63|0)9\d{9}$/.test(draft.customerPhone.replace(/[\s-]/g, ""))) {
           e.customerPhone = "Enter a mobile number like 0917 123 4567.";
@@ -380,23 +391,46 @@ export function Wizard() {
               steps={STEP_LABELS}
               current={step}
               furthest={furthest}
+              completion={completion}
               onJump={goTo}
             />
           </div>
         </div>
       </header>
 
-      <main id="main" className="mx-auto max-w-3xl px-4 pb-32 pt-6 sm:px-6 sm:pt-10">
+      <main id="main" className="mx-auto max-w-3xl px-4 pb-32 pt-5 sm:px-6 sm:pt-8">
+        {resumed ? (
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[20px] bg-ml-orange-50 px-5 py-3.5">
+            <p className="text-sm font-medium text-ml-orange-800">
+              Picked up where you left off.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                try {
+                  localStorage.removeItem(LOCAL_KEY);
+                } catch {
+                  /* ignore */
+                }
+                setDraft(EMPTY_DRAFT);
+                setSubmissionId(null);
+                setRefCode(null);
+                setPhotos([]);
+                setStep(1);
+                setFurthest(1);
+                setResumed(false);
+              }}
+              className="text-sm font-semibold text-ml-orange-800 underline underline-offset-2 hover:no-underline"
+            >
+              Start over
+            </button>
+          </div>
+        ) : null}
+
         <div key={step} className="animate-rise">
-          {step === 1 && <StepVehicle draft={draft} set={set} errors={errors} />}
-          {step === 2 && <StepSpecs draft={draft} set={set} errors={errors} />}
+          {step === 1 && <StepCar draft={draft} set={set} errors={errors} />}
+          {step === 2 && <StepCheck draft={draft} set={set} errors={errors} />}
           {step === 3 && (
-            <StepCondition draft={draft} set={set} errors={errors} />
-          )}
-          {step === 4 && (
-            <StepDocuments draft={draft} set={set} errors={errors} />
-          )}
-          {step === 5 && (
             <StepPhotos
               submissionId={submissionId}
               ensureSubmission={ensureSubmission}
@@ -404,12 +438,12 @@ export function Wizard() {
               setPhotos={setPhotos}
             />
           )}
-          {step === 6 && <StepContact draft={draft} set={set} errors={errors} />}
-          {step === 7 && (
-            <StepReview
+          {step === 4 && (
+            <StepYou
               draft={draft}
+              set={set}
+              errors={errors}
               photos={photos}
-              completion={completion}
               onEdit={goTo}
             />
           )}
@@ -484,7 +518,7 @@ function SaveIndicator({
       {label ? (
         <p
           className={`text-xs font-medium ${
-            state === "error" ? "text-ml-gold-700" : "text-ink-500"
+            state === "error" ? "text-ml-orange-700" : "text-ink-500"
           }`}
           aria-live="polite"
         >

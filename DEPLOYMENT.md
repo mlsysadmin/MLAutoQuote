@@ -59,8 +59,11 @@ Customer site: https://ml-autoquote-xxxxx-as.a.run.app
 Staff portal:  https://ml-autoquote-xxxxx-as.a.run.app/staff/login
 ```
 
-Database migrations run automatically on container start, so the schema is
-created on that first deploy.
+The service runs with `SKIP_MIGRATIONS=true` so the container never waits on
+the database to start listening — a cold Cloud SQL instance would otherwise
+stop the revision from going live, and Cloud Run would report it as a port
+error. The schema is applied separately, as a one-off Cloud Run Job, which
+`deploy.ps1` runs for you at the end.
 
 ### Later deploys
 
@@ -211,11 +214,24 @@ gcloud builds submit --config cloudbuild.yaml `
 ## Checking it's healthy
 
 ```powershell
-curl https://YOUR-SERVICE-URL/api/health
+curl https://YOUR-SERVICE-URL/api/health        # is the app up?
+curl https://YOUR-SERVICE-URL/api/health/ready  # can it reach the database?
 ```
 
-`{"status":"ok"}` means the app is up *and* can reach the database. Point Cloud
-Run's startup probe at it.
+Two endpoints on purpose. `/api/health` answers only "is this process
+serving" — it never touches the database, so point Cloud Run's **startup and
+liveness probes** here. A cold Cloud SQL instance must not be able to stop a
+healthy revision from going live.
+
+`/api/health/ready` is the deep check: database reachable *and* schema applied.
+Point **monitoring** here, never a startup probe.
+
+```json
+{"status":"ready","database":"reachable","migrations":"applied"}
+```
+
+`"migrations":"missing"` means the app is running but the schema was never
+applied — run `.\scripts\migrate-job.ps1 -ProjectId YOUR_PROJECT_ID`.
 
 Logs:
 

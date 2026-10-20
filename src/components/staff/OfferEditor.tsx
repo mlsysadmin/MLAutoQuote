@@ -421,7 +421,7 @@ export function OfferEditor({
 
             <div className="mt-5 border-t border-ink-100 pt-5">
               {confirming ? (
-                <div className="rounded-xl bg-ml-gold-50 p-4 ring-1 ring-ml-gold-300">
+                <div className="rounded-xl bg-ml-orange-50 p-4 ring-1 ring-ml-orange-300">
                   <p className="text-sm font-semibold text-ink-900">
                     Send {formatPeso(amount)} to{" "}
                     {vehicleTitle.toLowerCase().startsWith("incomplete")
@@ -546,7 +546,7 @@ function MarketBand({
         <Column label="Highest" value={high} align="right" />
       </div>
 
-      <div className="relative mt-3 h-2 rounded-full bg-gradient-to-r from-ink-200 via-ml-gold-300 to-ink-200">
+      <div className="relative mt-3 h-2 rounded-full bg-gradient-to-r from-ink-200 via-ml-orange-300 to-ink-200">
         <span
           className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink-900 ring-2 ring-white"
           style={{ left: `${pos(mid)}%` }}
@@ -647,7 +647,7 @@ function Breakdown({ breakdown }: { breakdown: OfferBreakdown }) {
         </div>
 
         {breakdown.clampedBy ? (
-          <p className="rounded-lg bg-ml-gold-50 px-3 py-2 text-xs text-ml-gold-800">
+          <p className="rounded-lg bg-ml-orange-50 px-3 py-2 text-xs text-ml-orange-800">
             {breakdown.clampedBy === "ceiling"
               ? "Capped at 95% of the lowest live asking price — we have to resell against it."
               : "Raised to the floor: the adjustments would otherwise have taken it below 40% of market mid."}

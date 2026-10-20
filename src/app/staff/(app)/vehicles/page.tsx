@@ -282,7 +282,7 @@ async function VehicleDetail({ make, model }: { make: string; model: string }) {
                       <p className="mt-0.5 text-xs text-ink-500 nums">
                         {formatMobile(s.customer.mobile)}
                         {s.customer._count.submissions > 1 ? (
-                          <span className="ml-2 font-semibold text-ml-gold-700">
+                          <span className="ml-2 font-semibold text-ml-orange-700">
                             {s.customer._count.submissions} vehicles
                           </span>
                         ) : null}

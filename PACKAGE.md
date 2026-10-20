@@ -7,6 +7,35 @@ Nothing in here is secret: no `.env`, no keys, no database contents.
 
 ---
 
+## The container never waits on the database
+
+Cloud Run gives a new revision a limited window to start listening on `$PORT`.
+Running `prisma migrate deploy` before the server means a cold Cloud SQL
+instance, an unready connector or a bad password stops the revision from ever
+starting — and Cloud Run reports that as a port error, not a database one.
+
+So this image **starts the server first, always**:
+
+- The service is deployed with `SKIP_MIGRATIONS=true`, and the entrypoint never
+  touches the database before `exec`.
+- `GET /api/health` is a pure liveness check — it does not query the database,
+  so point Cloud Run's startup and liveness probes here.
+- `GET /api/health/ready` is the deep check: database reachable, schema applied.
+  Point monitoring here, never a startup probe.
+- The schema is applied by a one-off **Cloud Run Job** (`scripts/migrate-job.ps1`),
+  which runs once per deploy instead of once per container instance.
+
+Verified with the database switched off entirely — the server was ready in 0 ms
+and every public page still served:
+
+| Route (database unreachable) | Result |
+| --- | --- |
+| `/`, `/value`, `/value/toyota/fortuner` | 200 |
+| `/sell`, `/track`, `/staff/login` | 200 |
+| `/robots.txt`, `/sitemap.xml` | 200 |
+| `/api/health` | 200 `{"status":"ok"}` |
+| `/api/health/ready` | 503 `{"database":"unreachable"}` |
+
 ## What was verified before packaging
 
 | Check | Result |
@@ -14,12 +43,11 @@ Nothing in here is secret: no `.env`, no keys, no database contents.
 | TypeScript (`tsc --noEmit`) | clean |
 | ESLint | clean |
 | Valuation tests (`npm test`) | 23 passed |
-| Production build | compiled successfully, 33 routes |
-| Standalone server boot | ready, serving on first request |
-| `GET /api/health` against MySQL 8.4 | `{"status":"ok"}` in 64 ms |
-| Landing page | HTTP 200 in 22 ms, 46 KB |
-| `/staff` without a session | 307 → `/staff/login` |
-| `robots.txt` | staff, track, sell and api all disallowed |
+| Production build | compiled successfully, 279 pages |
+| Boot with no database | ready in 0 ms, all public routes 200 |
+| Entrypoint, all three modes | server starts before any migration attempt |
+| Build from a clean extraction | `npm ci` → `prisma generate` → `next build` |
+| Static page response time | 15–20 ms |
 
 The standalone bundle is ~220 MB before compression, most of it the Prisma
 query engine and the Cloud Storage client.
@@ -40,7 +68,20 @@ You do **not** need Docker. Cloud Build builds the image for you.
 
 ## The one-command deploy
 
-From the unzipped folder, in PowerShell:
+Two equivalent scripts — use whichever matches the machine.
+
+**Linux, macOS, WSL, or Cloud Shell:**
+
+```bash
+./scripts/deploy.sh --project YOUR_PROJECT_ID
+```
+
+Cloud Shell is the path of least resistance: open
+<https://console.cloud.google.com>, click the terminal icon, upload this
+package, and run it. Nothing to install — `gcloud`, `openssl` and
+`cloud-sql-proxy` are all already there.
+
+**Windows PowerShell:**
 
 ```powershell
 .\scripts\deploy.ps1 -ProjectId YOUR_PROJECT_ID
@@ -53,9 +94,16 @@ then builds and deploys and points `NEXT_PUBLIC_APP_URL` at the result.
 
 The Cloud SQL instance alone takes 5–10 minutes the first time.
 
+It also grants **Cloud Build** `run.admin` and `iam.serviceAccountUser`, so the
+manual `cloudbuild.yaml` path below works too. Without those, a build that
+deploys from Cloud Build fails with a permissions error that reads as though
+the runtime service account were missing.
+
 Later deploys skip the infrastructure:
 
-```powershell
+```bash
+./scripts/deploy.sh --project YOUR_PROJECT_ID --skip-infra
+# or
 .\scripts\deploy.ps1 -ProjectId YOUR_PROJECT_ID -SkipInfra
 ```
 
@@ -108,9 +156,20 @@ openssl rand -base64 48 | gcloud secrets create autoquote-session-secret --data-
 printf 'mysql://autoquote:STRONG_PASSWORD@localhost/ml_autoquote?socket=/cloudsql/PROJECT:asia-southeast1:ml-autoquote-db' \
   | gcloud secrets create autoquote-database-url --data-file=-
 
-# 8 — build and deploy
+# 8 — build and deploy (SKIP_MIGRATIONS=true is set by this config)
 gcloud builds submit --config cloudbuild.yaml \
   --substitutions=_REGION=asia-southeast1,_SERVICE=ml-autoquote,_INSTANCE=PROJECT:asia-southeast1:ml-autoquote-db
+
+# 9 — apply the schema, once, as a job
+gcloud run jobs create ml-autoquote-migrate \
+  --image=$(gcloud run services describe ml-autoquote --region=asia-southeast1 --format='value(spec.template.spec.containers[0].image)') \
+  --region=asia-southeast1 \
+  --service-account=ml-autoquote@PROJECT.iam.gserviceaccount.com \
+  --set-cloudsql-instances=PROJECT:asia-southeast1:ml-autoquote-db \
+  --set-secrets=DATABASE_URL=autoquote-database-url:latest \
+  --command=node_modules/.bin/prisma --args=migrate,deploy \
+  --max-retries=1 --task-timeout=10m
+gcloud run jobs execute ml-autoquote-migrate --region=asia-southeast1 --wait
 ```
 
 If the password contains `@`, `/`, `:` or `#`, percent-encode it inside
@@ -132,9 +191,39 @@ created on that first deploy. Both migrations ship in `prisma/migrations/`.
 
 ## After the first deploy
 
+**Apply the schema.** `deploy.ps1` does this for you at the end of every run,
+but if you deployed by hand, or a migration failed, run it on its own:
+
+```powershell
+./scripts/migrate-job.sh --project YOUR_PROJECT_ID
+```
+
+```powershell
+.\scripts\migrate-job.ps1 -ProjectId YOUR_PROJECT_ID
+```
+
+It creates a Cloud Run Job from the image the service is already running, with
+the same Cloud SQL connection and secret, runs `prisma migrate deploy` once,
+and waits. Safe to re-run — only pending migrations are applied.
+
+Check it landed:
+
+```bash
+curl https://YOUR-SERVICE-URL/api/health/ready
+# {"status":"ready","database":"reachable","migrations":"applied"}
+```
+
+If that returns `"migrations":"missing"`, the app is up but the schema was
+never applied — run the job above.
+
 **Create a staff account** — nobody can sign in until you do. Needs the
 [Cloud SQL Auth Proxy](https://github.com/GoogleCloudPlatform/cloud-sql-proxy/releases)
 on your PATH:
+
+```powershell
+./scripts/create-user.sh --project YOUR_PROJECT_ID \
+  --email you@mlhuillier.com --name "Your Name" --role ADMIN
+```
 
 ```powershell
 .\scripts\create-user.ps1 -ProjectId YOUR_PROJECT_ID `
@@ -156,8 +245,12 @@ what *would* have been sent.
 **Check it's alive:**
 
 ```bash
-curl https://YOUR-SERVICE-URL/api/health
+curl https://YOUR-SERVICE-URL/api/health        # process up (no DB touched)
+curl https://YOUR-SERVICE-URL/api/health/ready  # DB reachable, schema applied
 ```
+
+Point Cloud Run's startup and liveness probes at `/api/health`, and monitoring
+at `/api/health/ready`.
 
 ---
 
@@ -178,6 +271,9 @@ curl https://YOUR-SERVICE-URL/api/health
 | `OFFER_VALIDITY_DAYS` | | `7` |
 | `SMS_WEBHOOK_URL` / `_TOKEN` | token | SMS gateway |
 | `EMAIL_WEBHOOK_URL` / `_TOKEN` | token | email gateway |
+| `SKIP_MIGRATIONS` | | `true` on the service — never let startup touch the DB |
+| `MIGRATE_ON_START` | | `true` runs migrations in the background after the server starts. Off by default; prefer the job. |
+| `APP_URL` | | public origin, read at runtime by robots.txt and the sitemap |
 
 Service settings the deploy script applies: `--min-instances=1`, `--cpu-boost`,
 `--concurrency=80`, `--max-instances=20`, `1 CPU / 1 GiB`, 60 s timeout.
@@ -200,9 +296,14 @@ prisma/seed-data.ts        the demo customers
 prisma/backfill-photos.ts  fills vehicle photos the seed missed
 src/                       application source
 public/                    static assets and the brand slot
-scripts/deploy.ps1         one-command setup and deploy
-scripts/create-user.ps1    create a staff account on the live database
+scripts/deploy.sh          one-command setup and deploy (Linux/macOS/Cloud Shell)
+scripts/deploy.ps1         the same, for Windows PowerShell
+scripts/migrate-job.sh     apply migrations as a one-off Cloud Run Job
+scripts/migrate-job.ps1    the same, for Windows PowerShell
+scripts/create-user.sh     create a staff account on the live database
+scripts/create-user.ps1    the same, for Windows PowerShell
 scripts/setup-local-db.ps1 local development database
+cloudbuild-image.yaml      image-only build, so the origin can be a build arg
 scripts/create-user.mjs
 README.md                  how the platform works
 DEPLOYMENT.md              the long-form deployment guide

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   One-command setup and deploy of M Lhuillier AutoQuote to Google Cloud Run.
 
@@ -29,6 +29,9 @@ param(
   [string]$Bucket = "",
   [string]$Repo = "ml-autoquote",
   [string]$SqlTier = "db-g1-small",
+  # Your public origin, e.g. https://autoquote.mlhuillier.com. Set this once you
+  # have a custom domain so canonical URLs and the sitemap point at it.
+  [string]$SiteUrl = "",
   [switch]$SkipInfra
 )
 
@@ -114,7 +117,27 @@ if (-not $SkipInfra) {
       --role=$role `
       --condition=None | Out-Null
   }
-  Write-Host "  Roles granted."
+  Write-Host "  Runtime roles granted."
+
+  # Cloud Build needs its own permissions if anyone deploys through
+  # cloudbuild.yaml rather than this script. Granting them here means the
+  # documented manual path works too, instead of failing on a permissions
+  # error that reads as if the service account were missing.
+  $projectNumber = (gcloud projects describe $ProjectId --format="value(projectNumber)")
+  $cloudBuildSa = "$projectNumber@cloudbuild.gserviceaccount.com"
+
+  foreach ($role in @("roles/run.admin", "roles/iam.serviceAccountUser")) {
+    gcloud projects add-iam-policy-binding $ProjectId `
+      --member="serviceAccount:$cloudBuildSa" `
+      --role=$role `
+      --condition=None | Out-Null
+  }
+  # And let Cloud Build act as the runtime account when it deploys.
+  gcloud iam service-accounts add-iam-policy-binding $serviceAccount `
+    --member="serviceAccount:$cloudBuildSa" `
+    --role="roles/iam.serviceAccountUser" | Out-Null
+
+  Write-Host "  Cloud Build roles granted."
 
   # ── Cloud SQL (MySQL) ──────────────────────────────────────────────────────
   Step "Cloud SQL for MySQL"
@@ -200,9 +223,29 @@ if (-not $SkipInfra) {
 
 Step "Building the container image"
 $image = "$Region-docker.pkg.dev/$ProjectId/$Repo/${Service}:$(Get-Date -Format yyyyMMdd-HHmmss)"
-gcloud builds submit --tag $image --timeout=1800s
+
+# Canonical and Open Graph URLs on the statically rendered pages are fixed at
+# build time, so the origin has to be known now. Use the custom domain if given,
+# otherwise whatever URL the service already has; on the very first deploy there
+# is none, and the script rebuilds once at the end.
+$siteUrl = $SiteUrl
+if (-not $siteUrl) {
+  $siteUrl = (gcloud run services describe $Service --region=$Region --format="value(status.url)" 2>$null)
+}
+if ($siteUrl) {
+  Write-Host "  Baking public origin: $siteUrl"
+  gcloud builds submit --timeout=1800s `
+    --config=cloudbuild-image.yaml `
+    --substitutions="_IMAGE=$image,_SITE_URL=$siteUrl"
+} else {
+  Write-Host "  No service URL yet — building without a baked origin." -ForegroundColor Yellow
+  gcloud builds submit --tag $image --timeout=1800s
+}
 
 Step "Deploying to Cloud Run"
+# COMPARABLES_PROVIDERS is deliberately not passed: its value contains a comma,
+# which is gcloud's own separator for --set-env-vars, and "manual,seed" is
+# already the default in src/lib/env.ts. Change it from the console if needed.
 gcloud run deploy $Service `
   --image=$image `
   --region=$Region `
@@ -219,13 +262,31 @@ gcloud run deploy $Service `
   --cpu-boost `
   --timeout=60 `
   --set-secrets="DATABASE_URL=autoquote-database-url:latest,SESSION_SECRET=autoquote-session-secret:latest" `
-  --set-env-vars="NODE_ENV=production,STORAGE_DRIVER=gcs,GCS_BUCKET=$Bucket,GCS_SIGNER_EMAIL=$serviceAccount,COMPARABLES_PROVIDERS=manual\,seed,VALUATION_BUY_MARGIN=0.82,OFFER_VALIDITY_DAYS=7"
+  --set-env-vars="NODE_ENV=production,SKIP_MIGRATIONS=true,STORAGE_DRIVER=gcs,GCS_BUCKET=$Bucket,GCS_SIGNER_EMAIL=$serviceAccount,VALUATION_BUY_MARGIN=0.82,OFFER_VALIDITY_DAYS=7"
 
 $url = (gcloud run services describe $Service --region=$Region --format="value(status.url)")
+if ($SiteUrl) { $url = $SiteUrl }
 
 Step "Pointing the app at its own public URL"
+# APP_URL is read at runtime, so robots.txt and the sitemap are correct straight
+# away even if the image was built before the URL existed.
 gcloud run services update $Service --region=$Region `
-  --update-env-vars="NEXT_PUBLIC_APP_URL=$url" | Out-Null
+  --update-env-vars="APP_URL=$url,NEXT_PUBLIC_APP_URL=$url" | Out-Null
+
+# ── Schema ──────────────────────────────────────────────────────────────────
+# The service boots with SKIP_MIGRATIONS=true so a cold or unreachable database
+# can never stop a revision from listening on $PORT. The schema is applied here
+# instead, as a one-off job — once per deploy rather than once per instance.
+Step "Applying database migrations"
+& (Join-Path $PSScriptRoot "migrate-job.ps1") `
+  -ProjectId $ProjectId -Region $Region -Service $Service -SqlInstance $SqlInstance
+
+if (-not $siteUrl) {
+  Write-Host ""
+  Write-Host "First deploy done. Canonical URLs were baked before the service" -ForegroundColor Yellow
+  Write-Host "had an address, so run the deploy once more to correct them:" -ForegroundColor Yellow
+  Write-Host "  .\scripts\deploy.ps1 -ProjectId $ProjectId -SkipInfra"
+}
 
 Write-Host ""
 Write-Host "Deployed." -ForegroundColor Green

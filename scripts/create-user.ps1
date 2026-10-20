@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Creates a staff account on the deployed database.
 

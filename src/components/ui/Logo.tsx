@@ -1,57 +1,54 @@
 /**
- * Brand lockup.
+ * Brand lockup, in the shape mlhuillier.com uses: "M◆LHUILLIER" set tight in
+ * the brand red, with the product name beneath.
  *
- * The monogram here is a stand-in built from the brand colours — drop the
- * official M Lhuillier artwork into /public/brand/logo.svg and swap the <svg>
- * for an <Image>, and nothing else in the app needs to change.
+ * Drawn as text plus one tiny inline diamond rather than the official artwork —
+ * that file is a 45 KB bitmap wrapped in SVG, which would cost more to load
+ * than the rest of the page. If you want the exact asset, drop it in
+ * public/brand/ and swap the markup here; nothing else references it.
  */
 export function Logo({
   className = "",
   mono = false,
+  showProduct = true,
 }: {
   className?: string;
-  /** White-on-red treatment for the dark header. */
+  /** White treatment, for dark or orange surfaces. */
   mono?: boolean;
+  showProduct?: boolean;
 }) {
+  const ink = mono ? "text-white" : "text-ml-red-700";
+
   return (
-    <span className={`inline-flex items-center gap-2.5 ${className}`}>
-      <svg
-        viewBox="0 0 40 40"
-        className="size-9 shrink-0"
-        role="img"
+    <span className={`inline-flex flex-col leading-none ${className}`}>
+      <span
+        className={`flex items-center text-[1.3rem] font-bold tracking-[-0.01em] ${ink}`}
         aria-label="M Lhuillier"
       >
-        <rect
-          width="40"
-          height="40"
-          rx="10"
-          fill={mono ? "#ffffff" : "var(--color-ml-red-600)"}
-        />
-        <path
-          d="M9 28V12h4.2l4.3 8.1 4.3-8.1H26v16h-3.6v-9.6l-3.6 6.7h-2.3l-3.6-6.7V28H9Z"
-          fill={mono ? "var(--color-ml-red-600)" : "#ffffff"}
-        />
-        <path
-          d="M28.2 28V12H31v13.2h5.2V28h-8Z"
-          fill="var(--color-ml-gold-400)"
-        />
-      </svg>
-      <span className="flex min-w-0 flex-col leading-none">
-        <span
-          className={`text-[0.95rem] font-extrabold tracking-tight ${
-            mono ? "text-white" : "text-ink-900"
-          }`}
+        M
+        <svg
+          viewBox="0 0 20 20"
+          className="mx-[0.06em] size-[0.72em]"
+          aria-hidden="true"
+          focusable="false"
         >
-          M Lhuillier
-        </span>
+          <path
+            d="M10 1.6 18.4 10 10 18.4 1.6 10z"
+            fill="currentColor"
+          />
+          <path d="M10 4.6 15.4 10 10 15.4 4.6 10z" fill="#ffffff" opacity=".28" />
+        </svg>
+        LHUILLIER
+      </span>
+      {showProduct ? (
         <span
-          className={`mt-0.5 text-[0.7rem] font-semibold uppercase tracking-[0.14em] ${
-            mono ? "text-ml-gold-300" : "text-ml-red-600"
+          className={`mt-[0.22em] text-[0.6rem] font-semibold uppercase tracking-[0.26em] ${
+            mono ? "text-white/80" : "text-ml-orange-600"
           }`}
         >
           AutoQuote
         </span>
-      </span>
+      ) : null}
     </span>
   );
 }

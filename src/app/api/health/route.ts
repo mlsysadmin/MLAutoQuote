@@ -1,22 +1,23 @@
-import { prisma } from "@/lib/prisma";
-
 export const dynamic = "force-dynamic";
 
 /**
- * Cloud Run startup and liveness probe.
+ * Liveness.
  *
- * Touches the database so a container with a broken connection string is
- * replaced rather than quietly serving errors.
+ * Answers one question: is this process up and serving? It deliberately does
+ * not touch the database, because this is what a Cloud Run startup or liveness
+ * probe should point at — a cold Cloud SQL instance must not be able to stop a
+ * healthy revision from starting, or take a running one down.
+ *
+ * For "can it actually do its job", use /api/health/ready.
  */
-export async function GET() {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    return Response.json({ status: "ok", time: new Date().toISOString() });
-  } catch (err) {
-    console.error("health check failed", err);
-    return Response.json(
-      { status: "degraded", error: "database unreachable" },
-      { status: 503 },
-    );
-  }
+export function GET() {
+  return Response.json(
+    {
+      status: "ok",
+      service: "ml-autoquote",
+      time: new Date().toISOString(),
+      uptimeSeconds: Math.round(process.uptime()),
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Creates the local development database and user on your own MySQL instance.
 
@@ -50,11 +50,16 @@ $plain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
 # `prisma migrate dev` creates a throwaway shadow database to diff against, so
 # the dev user needs CREATE at the server level. Production uses
 # `migrate deploy`, which needs none of this.
+# `'user'@'%'` would put the sequence @' in the here-string, which PowerShell
+# reads as the start of a single-quoted here-string. Holding the host part in a
+# variable keeps that sequence out of the literal text.
+$anyHost = "'%'"
+
 $sql = @"
 CREATE DATABASE IF NOT EXISTS ``$Database`` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS '$AppUser'@'%' IDENTIFIED BY '$AppPassword';
-GRANT ALL PRIVILEGES ON ``$Database``.* TO '$AppUser'@'%';
-GRANT CREATE, DROP, ALTER, REFERENCES ON *.* TO '$AppUser'@'%';
+CREATE USER IF NOT EXISTS '$AppUser'@$anyHost IDENTIFIED BY '$AppPassword';
+GRANT ALL PRIVILEGES ON ``$Database``.* TO '$AppUser'@$anyHost;
+GRANT CREATE, DROP, ALTER, REFERENCES ON *.* TO '$AppUser'@$anyHost;
 FLUSH PRIVILEGES;
 "@
 
