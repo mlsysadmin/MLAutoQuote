@@ -1,0 +1,20 @@
+node_modules/
+.next/
+out/
+build/
+.env
+.env.local
+.env*.local
+*.tsbuildinfo
+next-env.d.ts.bak
+
+# Local photo storage fallback (dev only — production uses Cloud Storage)
+.uploads/
+
+.DS_Store
+Thumbs.db
+desktop.ini
+npm-debug.log*
+
+# Packaged deployment archives
+dist/

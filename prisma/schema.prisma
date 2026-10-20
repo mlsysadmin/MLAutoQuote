@@ -1,0 +1,460 @@
+// M Lhuillier AutoQuote — data model
+//
+// Money is stored as whole Philippine pesos in Int columns. Used-car prices are
+// never quoted in centavos, and integers keep arithmetic exact and JSON cheap.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Internal users ───────────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN // manage users and valuation policy, plus everything an appraiser can do
+  APPRAISER // review submissions, adjust offers, send offers to customers
+  VIEWER // read-only access to the queue (branch staff, audit)
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(APPRAISER)
+  branch       String?
+  active       Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  offers            Offer[]
+  offerEvents       OfferEvent[]
+  auditLogs         AuditLog[]
+  customersVerified Customer[]
+
+  @@index([active, role])
+}
+
+// ── Customers (KYC) ──────────────────────────────────────────────────────────
+
+/// Government-issued IDs accepted in the Philippines.
+enum IdType {
+  PHILSYS // PhilSys / National ID
+  DRIVERS_LICENSE
+  PASSPORT
+  UMID
+  SSS
+  GSIS
+  PRC
+  POSTAL
+  VOTERS
+  SENIOR_CITIZEN
+  PWD
+  TIN
+  OTHER
+}
+
+enum KycStatus {
+  PENDING // declared by the customer, nobody has checked it
+  IN_REVIEW // a staff member is working through it
+  VERIFIED // ID sighted and matched
+  REJECTED
+  EXPIRED // the ID on file has lapsed
+}
+
+enum RiskRating {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+/// The master record for a person who has dealt with us.
+///
+/// One row per human, keyed on their mobile number in normalised form, so a
+/// seller who comes back with a second vehicle lands on the same record rather
+/// than creating a duplicate. Submissions keep their own snapshot of what the
+/// customer typed at the time; this is the record of who they are.
+model Customer {
+  id           String @id @default(cuid())
+  customerCode String @unique // MLC-7K3QD2, quotable at a branch
+
+  // ── Identity ──
+  firstName   String
+  middleName  String?
+  lastName    String
+  suffix      String? // Jr., III
+  birthDate   DateTime?
+  nationality String    @default("Filipino")
+
+  // ── Contact ──
+  mobile String  @unique @db.VarChar(20) // normalised: 639XXXXXXXXX
+  email  String?
+
+  // ── Address ──
+  addressLine String?
+  barangay    String?
+  city        String?
+  province    String?
+  postalCode  String? @db.VarChar(10)
+
+  // ── Identity document ──
+  idType   IdType?
+  idNumber String? @db.VarChar(64)
+  idExpiry DateTime?
+  tin      String?   @db.VarChar(20)
+
+  // ── KYC state ──
+  kycStatus       KycStatus  @default(PENDING)
+  riskRating      RiskRating @default(LOW)
+  verifiedById    String?
+  verifiedAt      DateTime?
+  rejectionReason String?    @db.Text
+  /// When the name was last checked against sanctions / watchlists.
+  screenedAt      DateTime?
+  kycNotes        String?    @db.Text
+
+  consentGivenAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  verifiedBy  User?              @relation(fields: [verifiedById], references: [id])
+  submissions Submission[]
+  documents   CustomerDocument[]
+
+  @@index([kycStatus, createdAt])
+  @@index([lastName, firstName])
+  @@index([createdAt])
+}
+
+enum CustomerDocKind {
+  ID_FRONT
+  ID_BACK
+  SELFIE
+  PROOF_OF_ADDRESS
+  SIGNATURE
+  OTHER
+}
+
+model CustomerDocument {
+  id          String          @id @default(cuid())
+  customerId  String
+  kind        CustomerDocKind
+  storageKey  String          @db.VarChar(512)
+  contentType String          @db.VarChar(100)
+  bytes       Int
+  uploadedById String?
+  createdAt   DateTime        @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId, kind])
+}
+
+// ── Customer submission ──────────────────────────────────────────────────────
+
+enum SubmissionStatus {
+  DRAFT // customer is still filling in the wizard
+  SUBMITTED // customer finished; valuation not yet attached
+  IN_REVIEW // system offer generated, waiting on an appraiser
+  OFFER_SENT // appraiser released an offer to the customer
+  ACCEPTED // customer accepted
+  DECLINED // customer declined
+  EXPIRED // offer validity lapsed
+  ARCHIVED
+}
+
+enum Transmission {
+  AUTOMATIC
+  MANUAL
+  CVT
+  DCT
+}
+
+enum FuelType {
+  GASOLINE
+  DIESEL
+  HYBRID
+  ELECTRIC
+  LPG
+}
+
+enum BodyType {
+  SEDAN
+  HATCHBACK
+  SUV
+  MPV
+  PICKUP
+  VAN
+  CROSSOVER
+  COUPE
+  OTHER
+}
+
+enum ConditionGrade {
+  EXCELLENT
+  GOOD
+  FAIR
+  POOR
+}
+
+model Submission {
+  id          String           @id @default(cuid())
+  publicToken String           @unique // unguessable key the customer's tracking link uses
+  refCode     String           @unique // short human-readable code, e.g. MLA-7K3QD2
+  status      SubmissionStatus @default(DRAFT)
+
+  // ── Vehicle identity ──
+  plateNumber String?
+  vin         String?  @db.VarChar(32)
+  make        String?
+  model       String?
+  variant     String?
+  year        Int?
+  transmission Transmission?
+  fuelType    FuelType?
+  bodyType    BodyType?
+  colour      String?
+  mileageKm   Int?
+
+  // ── Condition ──
+  conditionGrade     ConditionGrade?
+  hasAccidentHistory Boolean         @default(false)
+  isFloodDamaged     Boolean         @default(false)
+  tireConditionPct   Int? // rough remaining tread, 0-100
+  hasWarningLights   Boolean         @default(false)
+  airconWorking      Boolean         @default(true)
+  issuesNotes        String?         @db.Text
+
+  // ── Papers (PH: CR = Certificate of Registration, OR = Official Receipt) ──
+  hasCR            Boolean   @default(false)
+  hasOR            Boolean   @default(false)
+  orExpiryDate     DateTime?
+  hasDeedOfSale    Boolean   @default(false)
+  hasInsurance     Boolean   @default(false)
+  isEncumbered     Boolean   @default(false) // mortgage annotated on the CR
+  isUnderFinancing Boolean   @default(false)
+  financingBalance Int? // remaining balance in PHP
+  lastRegistrationYear Int?
+
+  // ── Contact ──
+  //
+  // These stay on the submission as a snapshot of what the seller told us at
+  // the time. The master record of who they are lives on Customer.
+  customerId     String?
+  customerName   String?
+  customerPhone  String?
+  customerEmail  String?
+  addressLine    String?
+  barangay       String?
+  city           String?
+  province       String?
+  birthDate      DateTime?
+  idType         IdType?
+  idNumber       String?   @db.VarChar(64)
+  preferredBranch String?
+  consentGiven   Boolean @default(false)
+
+  // ── Wizard progress ──
+  lastStep    Int       @default(1)
+  submittedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customer    Customer?    @relation(fields: [customerId], references: [id])
+  photos      Photo[]
+  comparables Comparable[]
+  offers      Offer[]
+
+  @@index([customerId])
+  @@index([status, submittedAt])
+  @@index([createdAt])
+  @@index([customerPhone])
+  @@index([make, model, year])
+}
+
+// ── Photos & documents ───────────────────────────────────────────────────────
+
+enum PhotoSlot {
+  FRONT_34 // front three-quarter
+  REAR_34
+  LEFT_SIDE
+  RIGHT_SIDE
+  INTERIOR_FRONT
+  INTERIOR_REAR
+  DASH_ODOMETER
+  ENGINE_BAY
+  TIRES
+  DAMAGE
+  DOC_CR
+  DOC_OR
+  DOC_ID
+  OTHER
+}
+
+model Photo {
+  id           String    @id @default(cuid())
+  submissionId String
+  slot         PhotoSlot
+  storageKey   String    @db.VarChar(512) // object path in the bucket, or local path
+  contentType  String    @db.VarChar(100)
+  bytes        Int
+  width        Int?
+  height       Int?
+  sortOrder    Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId, slot])
+}
+
+// ── Market comparables ───────────────────────────────────────────────────────
+
+enum ComparableSource {
+  FACEBOOK_MARKETPLACE
+  PARTNER_API
+  MANUAL
+  SEED
+}
+
+enum CompBucket {
+  LOW
+  MID
+  HIGH
+}
+
+model Comparable {
+  id           String           @id @default(cuid())
+  submissionId String
+  source       ComparableSource
+  externalId   String?          @db.VarChar(128)
+  title        String           @db.VarChar(400)
+  url          String           @db.Text
+  pricePhp     Int
+  year         Int?
+  mileageKm    Int?
+  location     String?
+  imageUrl     String?          @db.Text
+  postedAt     DateTime?
+
+  // Set by the valuation pass; the appraiser can exclude an obvious outlier and
+  // recompute without losing the row.
+  isExcluded Boolean     @default(false)
+  bucket     CompBucket?
+
+  capturedAt DateTime @default(now())
+  addedById  String?
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId, isExcluded])
+  @@index([submissionId, pricePhp])
+}
+
+// ── Offers ───────────────────────────────────────────────────────────────────
+
+enum OfferStatus {
+  DRAFT // generated by the system, never seen by anyone yet
+  PENDING_REVIEW // sitting in the appraiser queue
+  SENT // released to the customer
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  SUPERSEDED // a newer version replaced it
+}
+
+model Offer {
+  id           String      @id @default(cuid())
+  submissionId String
+  version      Int         @default(1)
+  status       OfferStatus @default(PENDING_REVIEW)
+
+  // ── Market snapshot the offer was built from ──
+  compLowPhp  Int
+  compMidPhp  Int
+  compHighPhp Int
+  compCount   Int    @default(0)
+  compLowId   String?
+  compMidId   String?
+  compHighId  String?
+
+  // ── The numbers ──
+  systemOfferPhp    Int // what the valuation engine proposed
+  appraiserOfferPhp Int? // what the appraiser changed it to
+  finalOfferPhp     Int? // what the customer was actually shown
+
+  // Line-by-line explanation of how systemOfferPhp was reached.
+  breakdown Json
+
+  appraiserNotes  String? @db.Text // internal only
+  customerMessage String? @db.Text // shown to the customer with the offer
+
+  validUntil  DateTime?
+  appraiserId String?
+  sentAt      DateTime?
+  respondedAt DateTime?
+  declineReason String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  submission Submission   @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  appraiser  User?        @relation(fields: [appraiserId], references: [id])
+  events     OfferEvent[]
+
+  @@unique([submissionId, version])
+  @@index([status, createdAt])
+  @@index([appraiserId])
+}
+
+enum OfferEventType {
+  GENERATED
+  VIEWED_BY_APPRAISER
+  ADJUSTED
+  SENT_TO_CUSTOMER
+  VIEWED_BY_CUSTOMER
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  NOTE_ADDED
+  COMPARABLES_REFRESHED
+}
+
+model OfferEvent {
+  id          String         @id @default(cuid())
+  offerId     String
+  type        OfferEventType
+  actorUserId String?
+  payload     Json?
+  createdAt   DateTime       @default(now())
+
+  offer Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  actor User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([offerId, createdAt])
+}
+
+// ── Audit ────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  actorUserId String?
+  action      String   @db.VarChar(80)
+  entity      String   @db.VarChar(60)
+  entityId    String   @db.VarChar(60)
+  meta        Json?
+  ip          String?  @db.VarChar(60)
+  createdAt   DateTime @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id])
+
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
