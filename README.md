@@ -1,4 +1,4 @@
-# M Lhuillier AutoQuote
+# M Lhuillier AutoQuote System
 
 A guided web platform for buying second-hand vehicles. Customers describe their
 car and upload photos and papers; the system prices it against marketplace
