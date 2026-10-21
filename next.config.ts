@@ -8,6 +8,22 @@ const nextConfig: NextConfig = {
   compress: true,
   reactStrictMode: true,
 
+  // In development Next refuses requests for /_next/* assets whose Host isn't
+  // localhost, which leaves a page served over the LAN rendered but never
+  // hydrated — the HTML arrives, the bundle 403s, and the app sits on its
+  // loading skeleton for ever. These are the origins colleagues test from.
+  //
+  // Development only: `next build` ignores it, so it has no bearing on
+  // Cloud Run. Set DEV_ORIGINS in .env (comma separated) when this machine's
+  // DHCP address changes, rather than editing this file.
+  allowedDevOrigins: [
+    "10.0.7.41",
+    ...(process.env.DEV_ORIGINS ?? "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  ],
+
   experimental: {
     // Ship less JS to the browser for the icon/util barrels we import.
     optimizePackageImports: ["@/components/ui"],

@@ -202,7 +202,7 @@ export default async function ModelGuidePage({ params }: Params) {
                 })}
                 target="_blank"
                 rel="noopener nofollow"
-                className="font-semibold text-ml-orange-700 hover:underline"
+                className="font-semibold text-ml-red-700 hover:underline"
               >
                 the live marketplace
               </a>

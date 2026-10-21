@@ -52,6 +52,7 @@ export async function PATCH(req: Request, { params }: Params) {
       appraiserOfferPhp: parsed.data.appraiserOfferPhp ?? null,
       appraiserNotes: parsed.data.appraiserNotes,
       customerMessage: parsed.data.customerMessage,
+      overrideReason: parsed.data.overrideReason ?? null,
       appraiserId: auth.id,
     },
     select: {
@@ -59,6 +60,7 @@ export async function PATCH(req: Request, { params }: Params) {
       appraiserOfferPhp: true,
       appraiserNotes: true,
       customerMessage: true,
+      overrideReason: true,
     },
   });
 

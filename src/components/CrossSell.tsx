@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 
 /**
  * Cross-sell into the rest of M Lhuillier.
@@ -17,7 +16,7 @@ type Product = {
   name: string;
   blurb: string;
   href: string;
-  icon: ReactNode;
+  icon: string;
 };
 
 const BASE = "https://mlhuillier.com";
@@ -27,43 +26,24 @@ function track(path: string, placement: string): string {
   return `${BASE}${path}?utm_source=autoquote&utm_medium=cross-sell&utm_campaign=${placement}`;
 }
 
+/**
+ * M Lhuillier's own service icons, taken from the live site and rasterised to
+ * 256px WebP. The originals are a flat colour circle wrapped around a
+ * full-resolution embedded bitmap — 4.2 MB across the five — which would have
+ * cost more to load than the rest of the page combined. These are the same
+ * artwork at 42 KB for the set.
+ *
+ * Each already carries its own coloured circle, so they need no chip behind
+ * them, and they are deliberately not recoloured: on the main site these read
+ * as product marks, not as brand chrome.
+ */
 const ICONS = {
-  pawn: (
-    <path
-      d="M12 3 4 8v8l8 5 8-5V8l-8-5Zm0 0v18M4 8l8 5 8-5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinejoin="round"
-    />
-  ),
-  loan: (
-    <>
-      <rect x="3" y="6" width="18" height="13" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.7" />
-      <circle cx="12" cy="12.5" r="2.8" fill="none" stroke="currentColor" strokeWidth="1.7" />
-      <path d="M3 9.5h18" stroke="currentColor" strokeWidth="1.7" />
-    </>
-  ),
-  jewelry: (
-    <path
-      d="M8 3h8l4 6-8 12L4 9l4-6Zm0 0 4 6 4-6M4 9h16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinejoin="round"
-    />
-  ),
-  insurance: (
-    <path
-      d="M12 3.2 19 6v6c0 4.3-2.9 7.6-7 8.8-4.1-1.2-7-4.5-7-8.8V6l7-2.8Zm-2.6 8.6 2 2 4-4.2"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  ),
-};
+  prenda: "/brand/services/prenda.webp",
+  salary: "/brand/services/salary.webp",
+  carLoan: "/brand/services/car-loan.webp",
+  shop: "/brand/services/ml-shop.webp",
+  insurance: "/brand/services/insurance.webp",
+} as const;
 
 function products(placement: string): Record<string, Product> {
   return {
@@ -73,21 +53,25 @@ function products(placement: string): Record<string, Product> {
       blurb:
         "Pawn jewelry or a gadget and walk out with cash the same day. Over 3,000 branches nationwide.",
       href: track("/quick-cash-loans", placement),
-      icon: ICONS.pawn,
+      icon: ICONS.salary,
     },
     loans: {
       key: "loans",
       name: "Salary & Car Loans",
       blurb: "Salary loans approved in about a minute. Car and home loans too.",
       href: track("/loans", placement),
-      icon: ICONS.loan,
+      icon: ICONS.carLoan,
     },
-    jewelry: {
-      key: "jewelry",
-      name: "ML Jewelry",
-      blurb: "Certified gold and diamond pieces, with instalment options.",
-      href: track("/jewelry", placement),
-      icon: ICONS.jewelry,
+    shop: {
+      key: "shop",
+      // Named and pointed as mlhuillier.com has it: the homepage tile says
+      // "ML Shop" and goes to /shop, which is the storefront. /jewelry is a
+      // different page — the Jewellers brand site.
+      name: "ML Shop",
+      blurb:
+        "Gold and diamond pieces from the country’s largest jewelry shop, with instalment options.",
+      href: track("/shop", placement),
+      icon: ICONS.shop,
     },
     insurance: {
       key: "insurance",
@@ -95,6 +79,17 @@ function products(placement: string): Record<string, Product> {
       blurb: "Cover your next vehicle, your home or your family from ₱300.",
       href: track("/ml-insurance", placement),
       icon: ICONS.insurance,
+    },
+    renewal: {
+      key: "renewal",
+      // /prenda, not /prenda-renewal — and it is missing from the sitemap, so
+      // it will not turn up by crawling. The page is titled "Online Pawn
+      // Ticket Renewal".
+      name: "Prenda Renewal",
+      blurb:
+        "Renew your pawn online, anytime, without needing to visit a branch.",
+      href: track("/prenda", placement),
+      icon: ICONS.prenda,
     },
   };
 }
@@ -104,6 +99,15 @@ export type CrossSellPlacement =
   | "accepted"
   | "waiting"
   | "landing";
+
+/** One column per card up to five, so a row never leaves an orphan. */
+const COLUMNS: Record<number, string> = {
+  1: "",
+  2: "sm:grid-cols-2",
+  3: "sm:grid-cols-3",
+  4: "sm:grid-cols-2 lg:grid-cols-4",
+  5: "sm:grid-cols-2 lg:grid-cols-5",
+};
 
 /** What to show, and how to frame it, for each moment in the journey. */
 const PLACEMENTS: Record<
@@ -121,7 +125,7 @@ const PLACEMENTS: Record<
   accepted: {
     title: "While you're with us",
     lead: "A few other things M Lhuillier can help with once the sale is done.",
-    show: ["insurance", "loans", "jewelry"],
+    show: ["insurance", "loans", "shop"],
     tone: "quiet",
   },
   waiting: {
@@ -133,7 +137,7 @@ const PLACEMENTS: Record<
   landing: {
     title: "More from M Lhuillier",
     lead: "Over 3,000 branches across the Philippines.",
-    show: ["pawn", "loans", "jewelry", "insurance"],
+    show: ["pawn", "loans", "shop", "insurance", "renewal"],
     tone: "quiet",
   },
 };
@@ -175,15 +179,7 @@ export function CrossSell({
       </p>
 
       <ul
-        className={`mt-5 grid gap-3 ${
-          items.length >= 4
-            ? "sm:grid-cols-2 lg:grid-cols-4"
-            : items.length === 3
-              ? "sm:grid-cols-3"
-              : items.length === 2
-                ? "sm:grid-cols-2"
-                : ""
-        }`}
+        className={`mt-5 grid gap-3 ${COLUMNS[Math.min(items.length, 5)]}`}
       >
         {items.map((product) => (
           <li key={product.key}>
@@ -191,27 +187,30 @@ export function CrossSell({
               href={product.href}
               target="_blank"
               rel="noopener"
-              className={`flex h-full items-start gap-3 rounded-2xl p-4 transition-colors ${
+              className={`flex h-full flex-col items-start gap-2.5 rounded-2xl p-4 transition-colors ${
                 bold
                   ? "bg-white/12 hover:bg-white/20"
                   : "bg-white ring-1 ring-ink-200 hover:ring-ink-300"
               }`}
             >
-              <span
-                className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${
-                  bold ? "bg-ml-orange-500 text-white" : "bg-ml-orange-50 text-ml-orange-700"
-                }`}
-              >
-                <svg viewBox="0 0 24 24" className="size-5" aria-hidden="true">
-                  {product.icon}
-                </svg>
-              </span>
+              {/* next/image would add a runtime optimiser for nothing: these are
+                  local, fixed-size, already-compressed 256px WebP. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={product.icon}
+                alt=""
+                width={64}
+                height={64}
+                loading="lazy"
+                decoding="async"
+                className="size-16 object-contain"
+              />
               <span className="min-w-0">
-                <span className="flex items-center gap-1 font-semibold">
+                <span className="flex items-start gap-1 font-semibold leading-snug">
                   {product.name}
                   <svg
                     viewBox="0 0 16 16"
-                    className="size-3 shrink-0 opacity-60"
+                    className="mt-[3px] size-3 shrink-0 opacity-60"
                     aria-hidden="true"
                   >
                     <path

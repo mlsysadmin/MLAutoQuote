@@ -57,8 +57,9 @@ note() { printf '    %s\n' "$1"; }
 # `gcloud describe` writes to stderr and exits non-zero when a thing is absent.
 exists() { "$@" >/dev/null 2>&1; }
 
+# SESSION_SECRET signs staff session cookies, so it is generated and never
+# fixed. The database password is set by DB_PASSWORD instead; see the note there.
 random_secret() { openssl rand -base64 48 | tr -d '\n'; }
-random_password() { openssl rand -base64 24 | tr -d '\n=+/' | cut -c1-24; }
 
 # Percent-encodes a password so it survives being put inside a URL.
 urlencode() {
@@ -100,7 +101,12 @@ note "Service:   $SERVICE"
 note "Cloud SQL: $CONNECTION_NAME"
 note "Bucket:    gs://$BUCKET"
 
-DB_PASSWORD=""
+# The house development password, used here too so every environment matches.
+# What actually keeps this instance closed is that it has no public IP and Cloud
+# Run reaches it over the Cloud SQL socket, which requires the
+# roles/cloudsql.client IAM grant. If anyone ever gives the instance a public IP
+# or an authorised network, set a real password here first.
+DB_PASSWORD="${DB_PASSWORD:-1234567890}"
 
 if [ "$SKIP_INFRA" != "true" ]; then
 
@@ -157,7 +163,6 @@ if [ "$SKIP_INFRA" != "true" ]; then
     gcloud sql instances create "$SQL_INSTANCE" \
       --database-version=MYSQL_8_0 --tier="$SQL_TIER" --region="$REGION" \
       --storage-auto-increase --backup-start-time=18:00 --availability-type=ZONAL
-    DB_PASSWORD="$(random_password)"
   fi
 
   if ! exists gcloud sql databases describe "$DATABASE" --instance="$SQL_INSTANCE"; then
@@ -167,11 +172,13 @@ if [ "$SKIP_INFRA" != "true" ]; then
 
   if ! gcloud sql users list --instance="$SQL_INSTANCE" --format='value(name)' \
        | grep -qx "$DB_USER"; then
-    [ -n "$DB_PASSWORD" ] || DB_PASSWORD="$(random_password)"
     gcloud sql users create "$DB_USER" --instance="$SQL_INSTANCE" --password="$DB_PASSWORD"
     note "Database user created."
   else
-    note "Database user already exists."
+    # Re-applied on every run, together with the DATABASE_URL secret below, so
+    # the account and the connection string the service holds never drift apart.
+    gcloud sql users set-password "$DB_USER" --instance="$SQL_INSTANCE" --password="$DB_PASSWORD"
+    note "Database user already exists — password re-applied."
   fi
 
   step "Cloud Storage bucket for photos"
@@ -199,17 +206,17 @@ JSON
     note "SESSION_SECRET created."
   fi
 
+  # Prisma needs the password percent-encoded inside the URL.
+  DB_URL="$(printf 'mysql://%s:%s@localhost/%s?socket=/cloudsql/%s' \
+    "$DB_USER" "$(urlencode "$DB_PASSWORD")" "$DATABASE" "$CONNECTION_NAME")"
+
   if exists gcloud secrets describe autoquote-database-url; then
-    note "DATABASE_URL already exists."
+    # The account's password is re-applied above on every run, so the stored URL
+    # has to be re-applied with it or the service is left holding a stale one.
+    printf '%s' "$DB_URL" | gcloud secrets versions add autoquote-database-url --data-file=-
+    note "DATABASE_URL updated to match the database user."
   else
-    if [ -z "$DB_PASSWORD" ]; then
-      read -r -s -p "    Password for MySQL user '${DB_USER}': " DB_PASSWORD
-      echo
-    fi
-    ENCODED="$(urlencode "$DB_PASSWORD")"
-    printf 'mysql://%s:%s@localhost/%s?socket=/cloudsql/%s' \
-      "$DB_USER" "$ENCODED" "$DATABASE" "$CONNECTION_NAME" \
-      | gcloud secrets create autoquote-database-url --data-file=-
+    printf '%s' "$DB_URL" | gcloud secrets create autoquote-database-url --data-file=-
     note "DATABASE_URL created."
   fi
 fi

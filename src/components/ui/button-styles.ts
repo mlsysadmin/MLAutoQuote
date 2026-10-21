@@ -25,12 +25,12 @@ const BASE =
   "select-none whitespace-nowrap";
 
 /**
- * `cta` is the brand orange and is only ever used at `lg`, where white on
- * #FF5F00 clears the 3:1 large-text bar. Everything smaller uses charcoal,
- * which is what the main site reaches for anyway and clears 12.6:1.
+ * `cta` is the brand red. White on #E00000 clears 5.0:1, so unlike the orange
+ * it replaced it is safe at any size, not just `lg`. Charcoal stays the
+ * workhorse for secondary actions, exactly as the main site uses it.
  */
 const VARIANTS: Record<ButtonVariant, string> = {
-  cta: "bg-ml-orange-500 text-white shadow-sm hover:bg-ml-orange-600 hover:shadow-md",
+  cta: "bg-ml-red-500 text-white shadow-sm hover:bg-ml-red-600 hover:shadow-md",
   primary: "bg-ink-800 text-white hover:bg-ink-900",
   secondary:
     "bg-white text-ink-700 ring-1 ring-inset ring-ink-300 hover:bg-ink-50 hover:text-ink-900",

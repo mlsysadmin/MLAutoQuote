@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getSessionUser } from "@/lib/session";
-import { Logo } from "@/components/ui";
+import { env } from "@/lib/env";
+import { Brand, Logo } from "@/components/ui";
 import { LoginForm } from "@/components/staff/LoginForm";
 
 export const metadata: Metadata = {
@@ -30,11 +31,11 @@ export default async function StaffLoginPage() {
               Appraiser sign in
             </h1>
             <p className="mt-1 text-sm text-ink-600">
-              For M Lhuillier staff only.
+              For <Brand /> staff only.
             </p>
 
             <div className="mt-6">
-              <LoginForm />
+              <LoginForm allowBlankPassword={env.allowBlankStaffPassword} />
             </div>
           </div>
 

@@ -24,16 +24,30 @@ export type PreparedImage = {
 const MAX_DIMENSION = 1600;
 const QUALITY = 0.82;
 
-export async function prepareImage(file: File): Promise<PreparedImage> {
+export type PrepareOptions = {
+  /**
+   * Turn a portrait photo a quarter turn so it comes out landscape. For slots
+   * that are always a landscape card — a government ID — where someone holding
+   * the phone upright produces a sideways picture that nobody can read.
+   */
+  preferLandscape?: boolean;
+};
+
+export async function prepareImage(
+  file: File,
+  options: PrepareOptions = {},
+): Promise<PreparedImage> {
   const originalBytes = file.size;
 
   try {
-    const bitmap = await createImageBitmap(file);
-    const { width, height } = fitWithin(
-      bitmap.width,
-      bitmap.height,
-      MAX_DIMENSION,
-    );
+    const bitmap = await decodeUpright(file);
+
+    const fitted = fitWithin(bitmap.width, bitmap.height, MAX_DIMENSION);
+
+    // A quarter turn clockwise, which swaps the output's width and height.
+    const rotate = Boolean(options.preferLandscape) && fitted.height > fitted.width;
+    const width = rotate ? fitted.height : fitted.width;
+    const height = rotate ? fitted.width : fitted.height;
 
     // OffscreenCanvas keeps the work off the main thread where available, so
     // the UI doesn't jank while a batch of photos is processed.
@@ -48,7 +62,15 @@ export async function prepareImage(file: File): Promise<PreparedImage> {
       | null;
     if (!ctx) throw new Error("no 2d context");
 
-    ctx.drawImage(bitmap, 0, 0, width, height);
+    if (rotate) {
+      // Move the origin to the top-right, then turn: source (x, y) lands at
+      // (width − y, x), which fills a canvas of the swapped dimensions.
+      ctx.translate(width, 0);
+      ctx.rotate(Math.PI / 2);
+      ctx.drawImage(bitmap, 0, 0, fitted.width, fitted.height);
+    } else {
+      ctx.drawImage(bitmap, 0, 0, width, height);
+    }
     bitmap.close?.();
 
     const contentType = (await supportsWebp()) ? "image/webp" : "image/jpeg";
@@ -69,6 +91,25 @@ export async function prepareImage(file: File): Promise<PreparedImage> {
     };
   } catch {
     return rawResult(file, 0, 0);
+  }
+}
+
+/**
+ * Decodes the file the right way up.
+ *
+ * `imageOrientation: "from-image"` applies the EXIF orientation during decode.
+ * Without it the flag is honoured by nobody: the canvas re-encode below strips
+ * EXIF entirely, so a photo the phone recorded as "turn this a quarter when you
+ * show it" gets saved permanently sideways — which is exactly how an ID ends up
+ * unreadable in the appraiser's gallery.
+ */
+async function decodeUpright(file: File): Promise<ImageBitmap> {
+  try {
+    return await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    // Older engines reject the options argument outright; a sideways photo
+    // beats no photo.
+    return createImageBitmap(file);
   }
 }
 

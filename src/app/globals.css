@@ -3,15 +3,20 @@
 /* ───────────────────────────────────────────────────────────────────────────
    M Lhuillier AutoQuote — design tokens
 
-   Taken from mlhuillier.com as it is built today: Poppins throughout, a vivid
-   red for the word that carries the message, orange for the one action we want
-   taken, charcoal for every other action, and sections that alternate white and
-   #F5F5F5. Buttons are pills; cards are generously rounded.
+   Taken from mlhuillier.com as it is built today: Poppins throughout, the
+   brand red for the mark and the one action we want taken, charcoal for every
+   other action, and sections that alternate white and #F5F5F5. Buttons are
+   pills; cards are generously rounded.
 
-   Orange is reserved for the primary call to action, which is always large —
-   white on #FF5F00 clears 3:1, the bar for large text, but not the 4.5:1 that
-   body-sized text needs. Charcoal #333 is the workhorse for everything smaller,
-   exactly as the main site uses it.
+   The brand red is #E00000, sampled from the official logo asset — a single
+   flat red, with no second colour in the mark. It clears 5.0:1 on white, so it
+   carries body text and small buttons safely. Charcoal #333 is the workhorse
+   for secondary actions, exactly as the main site uses it.
+
+   Orange survives in exactly one place: the `gold` Badge tone, an amber used in
+   the staff tools for "repeat customer" and "offer sent". It is a status
+   colour, not brand chrome. Caution and error surfaces use the --color-warn
+   and --color-danger tokens rather than a brand hue.
    ─────────────────────────────────────────────────────────────────────────── */
 
 @theme {
@@ -27,15 +32,15 @@
   --color-ml-orange-800: #a33600;
 
   /* Emphasis red — headline words, destructive states */
-  --color-ml-red-50: #fff1f1;
-  --color-ml-red-100: #ffdcdc;
-  --color-ml-red-200: #ffbaba;
-  --color-ml-red-300: #ff8585;
-  --color-ml-red-400: #ff3b3b;
-  --color-ml-red-500: #fa0000; /* the brand red */
-  --color-ml-red-600: #d40000;
-  --color-ml-red-700: #be0404; /* the logo red */
-  --color-ml-red-800: #9b0505;
+  --color-ml-red-50: #fff1f0;
+  --color-ml-red-100: #ffdbd9;
+  --color-ml-red-200: #ffb8b4;
+  --color-ml-red-300: #ff8780;
+  --color-ml-red-400: #fa3b32;
+  --color-ml-red-500: #e00000; /* the brand red, sampled from the logo: 5.0:1 on white */
+  --color-ml-red-600: #cf0000; /* 5.8:1 */
+  --color-ml-red-700: #bd0000; /* 6.6:1, for dense text and hover */
+  --color-ml-red-800: #9c0101;
 
   /* Neutrals, straight off the site */
   --color-ink-50: #fafafa;
@@ -105,7 +110,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-ml-orange-600);
+    outline: 2px solid var(--color-ml-red-500);
     outline-offset: 2px;
     border-radius: 6px;
   }
@@ -117,7 +122,7 @@
 
   /* Phones are the common case here, so taps get a real target. */
   button, [role="button"], a {
-    -webkit-tap-highlight-color: rgb(255 95 0 / 0.12);
+    -webkit-tap-highlight-color: rgb(224 0 0 / 0.12);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -131,9 +136,9 @@
 }
 
 @layer utilities {
-  /* The orange band the main site uses to break up white sections. */
-  .bg-ml-orange-band {
-    background: var(--color-ml-orange-500);
+  /* The brand band used to break up white sections. */
+  .bg-ml-band {
+    background: var(--color-ml-red-500);
   }
 
   .bg-ml-wash {

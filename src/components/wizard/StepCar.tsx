@@ -130,7 +130,7 @@ export function StepCar({ draft, set, errors }: StepProps) {
         </div>
 
         {draft.make && draft.year && models.length === 0 ? (
-          <p className="rounded-2xl bg-ml-orange-50 px-4 py-3 text-xs leading-relaxed text-ml-orange-800">
+          <p className="rounded-2xl bg-[var(--color-warn-bg)] px-4 py-3 text-xs leading-relaxed text-[var(--color-warn)]">
             No {draft.make} models listed for {draft.year}. Choose{" "}
             <strong>Other / not listed</strong> and our appraiser will identify
             it from your photos.
@@ -328,7 +328,7 @@ function MileageGauge({
           className="absolute inset-y-0 left-[37.5%] w-[25%] rounded-full bg-ink-400"
         />
         <div
-          className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ml-orange-500 ring-2 ring-white transition-[left] duration-300"
+          className="absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ml-red-500 ring-2 ring-white transition-[left] duration-300"
           style={{ left: `${position}%` }}
         />
       </div>

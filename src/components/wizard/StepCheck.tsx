@@ -266,7 +266,7 @@ function TireSlider({
         value={current}
         aria-label="Tire tread remaining"
         onChange={(e) => onChange(Number(e.target.value))}
-        className="mt-2 w-full accent-ml-orange-500"
+        className="mt-2 w-full accent-ml-red-500"
       />
     </div>
   );

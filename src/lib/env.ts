@@ -21,6 +21,18 @@ export const env = {
 
   databaseUrl: process.env.DATABASE_URL ?? "",
 
+  /**
+   * Development convenience: lets staff sign in with the password box empty,
+   * so nobody has to type one while building or demonstrating the portal.
+   *
+   * Returns false in production regardless of what the environment says, so a
+   * stray variable in a deploy can never switch it on there.
+   */
+  get allowBlankStaffPassword(): boolean {
+    if (isProd) return false;
+    return process.env.AUTH_ALLOW_BLANK_PASSWORD === "true";
+  },
+
   get sessionSecret(): string {
     const secret = process.env.SESSION_SECRET;
     if (!secret || secret.length < 32) {

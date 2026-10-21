@@ -43,9 +43,9 @@ export function Stepper({
               <span
                 className={`h-1.5 w-full rounded-full transition-colors duration-300 ${
                   active
-                    ? "bg-ml-orange-500"
+                    ? "bg-ml-red-500"
                     : done
-                      ? "bg-ml-orange-300"
+                      ? "bg-ml-red-300"
                       : "bg-ink-200"
                 }`}
               />
@@ -53,7 +53,7 @@ export function Stepper({
                 {done && !active ? (
                   <svg
                     viewBox="0 0 16 16"
-                    className="size-3 shrink-0 text-ml-orange-600"
+                    className="size-3 shrink-0 text-ml-red-600"
                     aria-hidden="true"
                   >
                     <path

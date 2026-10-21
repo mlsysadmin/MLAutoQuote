@@ -11,9 +11,14 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-30 border-b border-ink-200/80 bg-white/95 backdrop-blur-sm">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-        <Link href="/" aria-label="M Lhuillier AutoQuote home">
+        <a
+            href="https://www.mlhuillier.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="M Lhuillier home (opens in a new tab)"
+          >
           <Logo />
-        </Link>
+        </a>
         <nav className="flex items-center gap-1">
           <Link
             href="/value"

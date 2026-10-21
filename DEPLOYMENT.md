@@ -43,7 +43,11 @@ after. It will:
    Cloud SQL Client, Secret Accessor, Storage Object Admin, Service Account
    Token Creator (the last one is what lets it sign photo upload URLs).
 4. Create the **Cloud SQL MySQL 8.0** instance, the database and an application
-   user with a generated password. *This step alone takes 5–10 minutes.*
+   user. *This step alone takes 5–10 minutes.* The user gets the house password
+   `1234567890`; pass `-DbPassword` to set your own. What keeps the instance
+   closed is that it has no public IP and Cloud Run reaches it over the Cloud
+   SQL socket, which needs the `roles/cloudsql.client` grant — so if you ever
+   give it a public IP or an authorised network, set a real password first.
 5. Create the **photo bucket** with uniform access and public access
    prevention, and set the CORS rules the browser needs to upload directly.
 6. Generate `SESSION_SECRET` and `DATABASE_URL` and store them in **Secret
@@ -94,8 +98,18 @@ and put it somewhere on your PATH. Then:
   -Email you@mlhuillier.com -Name "Your Name" -Role ADMIN
 ```
 
-It opens a tunnel, creates the account, prints a generated password **once**,
-and closes the tunnel. Repeat for each appraiser with `-Role APPRAISER`.
+It opens a tunnel, creates the account and closes the tunnel again. Repeat for
+each appraiser with `-Role APPRAISER`.
+
+The account is created with the development password `1234567890` and the
+script says so. **Set a real one before anyone outside the team signs in** — a
+staff account can release offers and open customers' CR, OR and ID scans:
+
+```powershell
+.\scripts\create-user.ps1 -ProjectId your-gcp-project-id `
+  -Email them@mlhuillier.com -Name "Their Name" -Role APPRAISER `
+  -Password 'something only they know'
+```
 
 Roles:
 

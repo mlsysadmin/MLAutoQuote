@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Button, Logo, Stepper, Alert } from "@/components/ui";
 import {
   EMPTY_DRAFT,
@@ -45,6 +44,22 @@ export function Wizard({
   const [refCode, setRefCode] = useState<string | null>(null);
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // The wizard owns the photo thumbnails, so it is the one that releases them.
+  // Read through a ref at unmount time: the cleanup must see the final list,
+  // not the empty one this effect closed over on mount.
+  const photosRef = useRef(photos);
+  useEffect(() => {
+    photosRef.current = photos;
+  }, [photos]);
+
+  useEffect(() => {
+    return () => {
+      for (const photo of photosRef.current) {
+        if (photo.previewUrl) URL.revokeObjectURL(photo.previewUrl);
+      }
+    };
+  }, []);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -381,9 +396,14 @@ export function Wizard({
       <header className="sticky top-0 z-30 border-b border-ink-200/70 bg-white/90 backdrop-blur-md">
         <div className="mx-auto max-w-3xl px-4 py-3 sm:px-6">
           <div className="flex items-center justify-between gap-4">
-            <Link href="/" aria-label="M Lhuillier AutoQuote home">
+            <a
+            href="https://www.mlhuillier.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="M Lhuillier home (opens in a new tab)"
+          >
               <Logo />
-            </Link>
+            </a>
             <SaveIndicator state={saveState} refCode={refCode} />
           </div>
           <div className="mt-3">
@@ -400,8 +420,8 @@ export function Wizard({
 
       <main id="main" className="mx-auto max-w-3xl px-4 pb-32 pt-5 sm:px-6 sm:pt-8">
         {resumed ? (
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[20px] bg-ml-orange-50 px-5 py-3.5">
-            <p className="text-sm font-medium text-ml-orange-800">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-[20px] bg-[var(--color-ok-bg)] px-5 py-3.5">
+            <p className="text-sm font-medium text-[var(--color-ok)]">
               Picked up where you left off.
             </p>
             <button
@@ -420,7 +440,7 @@ export function Wizard({
                 setFurthest(1);
                 setResumed(false);
               }}
-              className="text-sm font-semibold text-ml-orange-800 underline underline-offset-2 hover:no-underline"
+              className="text-sm font-semibold text-[var(--color-ok)] underline underline-offset-2 hover:no-underline"
             >
               Start over
             </button>
@@ -445,6 +465,7 @@ export function Wizard({
               errors={errors}
               photos={photos}
               onEdit={goTo}
+              submissionId={submissionId}
             />
           )}
         </div>
@@ -518,7 +539,7 @@ function SaveIndicator({
       {label ? (
         <p
           className={`text-xs font-medium ${
-            state === "error" ? "text-ml-orange-700" : "text-ink-500"
+            state === "error" ? "text-[var(--color-danger)]" : "text-ink-500"
           }`}
           aria-live="polite"
         >

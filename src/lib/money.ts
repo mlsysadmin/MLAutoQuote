@@ -15,6 +15,33 @@ export function formatPeso(amount: number | null | undefined): string {
   return peso.format(amount);
 }
 
+/**
+ * "₱137K", "₱1.2M" — for a figure that has to land in a glance rather than be
+ * read digit by digit, such as a warning the appraiser must take in before
+ * committing to a number.
+ */
+export function formatCompactPeso(amount: number | null | undefined): string {
+  if (amount === null || amount === undefined || !Number.isFinite(amount)) {
+    return "—";
+  }
+
+  const value = Math.abs(amount);
+  const sign = amount < 0 ? "-" : "";
+
+  if (value >= 1_000_000) {
+    // One decimal unless it's a round number of millions: 1.2M, but 2M not 2.0M.
+    const millions = value / 1_000_000;
+    const shown = millions >= 10 || Number.isInteger(millions)
+      ? Math.round(millions).toString()
+      : millions.toFixed(1);
+    return `${sign}₱${shown}M`;
+  }
+
+  if (value >= 1_000) return `${sign}₱${Math.round(value / 1_000)}K`;
+
+  return `${sign}₱${Math.round(value)}`;
+}
+
 /** "₱485,000" without the symbol, for tight table cells. */
 export function formatNumber(amount: number | null | undefined): string {
   if (amount === null || amount === undefined || !Number.isFinite(amount)) {

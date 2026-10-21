@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Alert,
@@ -27,6 +27,8 @@ type Comparable = {
   location: string | null;
   isExcluded: boolean;
   bucket: string | null;
+  /** ISO timestamp of when this price was captured. */
+  capturedAt: string;
 };
 
 const SOURCE_LABELS: Record<string, { label: string; tone: "ok" | "info" | "neutral" }> =
@@ -74,6 +76,17 @@ export function ComparablesPanel({
 
   const searchUrl =
     make && model ? marketplaceSearchUrl({ make, model, year }) : null;
+
+  // Used-car prices move week to week, so the appraiser needs to know how old
+  // this band is before trusting it. The newest capture is the honest claim:
+  // "as of" the freshest thing in the table, not when the page was opened.
+  const capturedAt = useMemo(() => {
+    const newest = comparables
+      .map((c) => new Date(c.capturedAt).getTime())
+      .filter((t) => Number.isFinite(t))
+      .sort((a, b) => b - a)[0];
+    return newest ? new Date(newest) : null;
+  }, [comparables]);
 
   async function call(
     method: string,
@@ -133,9 +146,12 @@ export function ComparablesPanel({
       <CardHeader
         title="Market comparables"
         description={
-          active.length > 0
-            ? `${active.length} listing${active.length === 1 ? "" : "s"} in the band · ${comparables.length - active.length} excluded`
-            : "No comparables yet — add at least three for a defensible offer."
+          <>
+            {active.length > 0
+              ? `${active.length} listing${active.length === 1 ? "" : "s"} in the band · ${comparables.length - active.length} excluded`
+              : "No comparables yet — add at least three for a defensible offer."}
+            {capturedAt ? <PriceAsOf at={capturedAt} /> : null}
+          </>
         }
         action={
           <div className="flex items-center gap-2">
@@ -343,5 +359,64 @@ export function ComparablesPanel({
         </p>
       </CardBody>
     </Card>
+  );
+}
+
+/**
+ * How fresh this band is.
+ *
+ * Used-car prices move week to week, and an appraiser reading a table has no
+ * way to tell a band captured this morning from one captured a fortnight ago.
+ * Anything older than a day says so in amber, because at that point the
+ * sensible move is to refresh before committing to a number.
+ */
+function PriceAsOf({ at }: { at: Date }) {
+  // Read the clock once, after mounting. Calling it during render would be
+  // impure, and formatting a local time on the server — which runs in UTC —
+  // would disagree with the browser and trip hydration.
+  const [now, setNow] = useState<number | null>(null);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    setNow(Date.now());
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  if (now === null) return null;
+
+  const stale = (now - at.getTime()) / 3_600_000 >= 24;
+
+  return (
+    <span
+      className={`mt-1 flex items-center gap-1.5 text-xs font-medium ${
+        stale ? "text-[var(--color-warn)]" : "text-ink-500"
+      }`}
+    >
+      <svg viewBox="0 0 16 16" className="size-3.5 shrink-0" aria-hidden="true">
+        <circle
+          cx="8"
+          cy="8"
+          r="6"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        />
+        <path
+          d="M8 4.5V8l2.2 1.3"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        />
+      </svg>
+      Prices as of{" "}
+      {at.toLocaleString("en-PH", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })}
+      {stale ? " · recalculate for current prices" : null}
+    </span>
   );
 }

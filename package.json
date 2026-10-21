@@ -18,12 +18,14 @@
     "seed": "tsx --env-file-if-exists=.env prisma/seed.ts",
     "setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
     "test": "tsx --test src/lib/**/*.test.ts",
-    "photos:backfill": "tsx --env-file-if-exists=.env prisma/backfill-photos.ts"
+    "photos:backfill": "tsx --env-file-if-exists=.env prisma/backfill-photos.ts",
+    "package": "node scripts/package.mjs"
   },
   "prisma": {
     "seed": "tsx --env-file-if-exists=.env prisma/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.137.0",
     "@google-cloud/storage": "^7.14.0",
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",

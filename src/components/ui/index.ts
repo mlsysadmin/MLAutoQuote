@@ -16,3 +16,4 @@ export {
 export { Badge, SubmissionBadge, OfferBadge, Alert } from "./Badge";
 export { Stepper } from "./Stepper";
 export { Logo } from "./Logo";
+export { Brand } from "./Brand";

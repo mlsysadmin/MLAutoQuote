@@ -1,12 +1,17 @@
 "use client";
 
-import { Alert, Checkbox, Field, Input, Select } from "@/components/ui";
+import { Alert, Checkbox, Field, Input, Select, Spinner } from "@/components/ui";
 import { formatKm } from "@/lib/money";
 import { PROVINCES } from "@/lib/vehicles";
 import { ID_TYPE_OPTIONS, idTypeLabel } from "@/lib/id-types";
 import { REQUIRED_SLOTS, type Draft } from "@/lib/wizard";
 import { StepHeading, Panel, PanelTitle, type StepProps } from "./StepShell";
 import type { UploadedPhoto } from "./StepPhotos";
+import {
+  useIdAutofill,
+  AUTOFILL_FIELD_LABELS,
+  type AutofillState,
+} from "./useIdAutofill";
 
 /** The latest date of birth that still makes someone 18 today. */
 function maxBirthDate(): string {
@@ -27,14 +32,23 @@ export function StepYou({
   errors,
   photos,
   onEdit,
+  submissionId,
 }: StepProps & {
   photos: UploadedPhoto[];
   onEdit: (step: number) => void;
+  submissionId: string | null;
 }) {
   const done = new Set(
     photos.filter((p) => p.status === "done").map((p) => p.slot),
   );
   const missingPhotos = REQUIRED_SLOTS.filter((s) => !done.has(s));
+
+  const { state: autofill, retry } = useIdAutofill({
+    submissionId,
+    draft,
+    set,
+    hasIdPhoto: done.has("DOC_ID"),
+  });
 
   return (
     <>
@@ -64,6 +78,8 @@ export function StepYou({
 
       <Panel className="mt-4 space-y-5">
         <PanelTitle>Your details</PanelTitle>
+
+        <IdAutofillNotice state={autofill} onRetry={retry} />
 
         <Field label="Full name" required error={errors.customerName} hint="As printed on your ID.">
           {({ id, invalid }) => (
@@ -322,7 +338,7 @@ function Summary({
               <button
                 type="button"
                 onClick={() => onEdit(step)}
-                className="text-xs font-semibold text-ml-orange-700 hover:underline"
+                className="text-xs font-semibold text-ml-red-700 hover:underline"
               >
                 Edit
               </button>
@@ -332,4 +348,59 @@ function Summary({
       </dl>
     </div>
   );
+}
+
+/**
+ * Tells the customer what we read off their ID, in the one place it matters —
+ * directly above the fields it filled. The wording invites a check rather than
+ * claiming correctness, because a misread name must be easy to notice and
+ * trivial to fix.
+ */
+function IdAutofillNotice({
+  state,
+  onRetry,
+}: {
+  state: AutofillState;
+  onRetry: () => void;
+}) {
+  if (state.status === "idle" || state.status === "unavailable") return null;
+
+  if (state.status === "reading") {
+    return (
+      <div className="flex items-center gap-2.5 rounded-xl bg-ink-50 px-4 py-3 text-sm text-ink-600">
+        <Spinner className="text-ink-400" />
+        Reading your ID…
+      </div>
+    );
+  }
+
+  if (state.status === "filled") {
+    const labels = state.fields.map((f) => AUTOFILL_FIELD_LABELS[f] ?? f);
+    return (
+      <Alert tone="ok" title="Filled in from your ID">
+        We read your {listToSentence(labels)} off the ID you uploaded. Please
+        check {state.fields.length === 1 ? "it" : "them"} against the card and
+        correct anything we got wrong.
+      </Alert>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-ink-50 px-4 py-3 text-sm text-ink-600">
+      <span>We couldn&apos;t read your ID clearly — please type your details.</span>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="font-semibold text-ml-red-600 hover:underline"
+      >
+        Try again
+      </button>
+    </div>
+  );
+}
+
+/** "name and date of birth", "name, ID type and ID number". */
+function listToSentence(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }

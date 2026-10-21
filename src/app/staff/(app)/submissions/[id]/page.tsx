@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { getViewUrls } from "@/lib/storage";
 import { formatKm, formatPeso } from "@/lib/money";
-import type { OfferBreakdown } from "@/lib/valuation";
+import { computeBand, type OfferBreakdown } from "@/lib/valuation";
 import { idTypeLabel } from "@/lib/id-types";
 import {
   Badge,
@@ -19,6 +19,7 @@ import { OfferEditor } from "@/components/staff/OfferEditor";
 import { ComparablesPanel } from "@/components/staff/ComparablesPanel";
 import { PhotoGallery } from "@/components/staff/PhotoGallery";
 import { GenerateOfferButton } from "@/components/staff/GenerateOfferButton";
+import { EditableEmail } from "@/components/staff/EditableEmail";
 
 export const dynamic = "force-dynamic";
 
@@ -97,6 +98,20 @@ export default async function SubmissionDetailPage({ params }: Params) {
   if (!submission) notFound();
 
   const offer = submission.offers[0] ?? null;
+
+  // The band as the table stands right now. Excluding a listing re-renders this
+  // page, so the figures beside the offer follow the appraiser's exclusions
+  // immediately instead of waiting for a recalculation.
+  const included = submission.comparables.filter((c) => !c.isExcluded);
+  const computed = computeBand(included);
+  const liveBand = computed
+    ? {
+        low: computed.lowPhp,
+        mid: computed.midPhp,
+        high: computed.highPhp,
+        count: computed.count,
+      }
+    : null;
   const breakdown = (offer?.breakdown ?? null) as OfferBreakdown | null;
 
   // Sign every photo URL in one parallel pass.
@@ -196,6 +211,7 @@ export default async function SubmissionDetailPage({ params }: Params) {
               location: c.location,
               isExcluded: c.isExcluded,
               bucket: c.bucket,
+              capturedAt: c.capturedAt.toISOString(),
             }))}
             make={submission.make}
             model={submission.model}
@@ -344,7 +360,7 @@ export default async function SubmissionDetailPage({ params }: Params) {
             <CardBody>
               {submission.customer &&
               submission.customer.submissions.length > 0 ? (
-                <div className="mb-4 rounded-xl bg-ml-orange-50 px-4 py-3 ring-1 ring-ml-orange-300">
+                <div className="mb-4 rounded-xl bg-[var(--color-warn-bg)] px-4 py-3 ring-1 ring-amber-300">
                   <p className="text-sm font-semibold text-ink-900">
                     This customer has brought in{" "}
                     {submission.customer.submissions.length + 1} vehicles.
@@ -396,7 +412,15 @@ export default async function SubmissionDetailPage({ params }: Params) {
                     )
                   }
                 />
-                <DataRow label="Email" value={submission.customerEmail ?? "—"} />
+                <DataRow
+                  label="Email"
+                  value={
+                    <EditableEmail
+                      submissionId={submission.id}
+                      email={submission.customerEmail}
+                    />
+                  }
+                />
                 <DataRow
                   label="Date of birth"
                   value={
@@ -458,6 +482,7 @@ export default async function SubmissionDetailPage({ params }: Params) {
                 compHighPhp: offer.compHighPhp,
                 compCount: offer.compCount,
                 appraiserNotes: offer.appraiserNotes,
+                overrideReason: offer.overrideReason,
                 customerMessage: offer.customerMessage,
                 sentAt: offer.sentAt?.toISOString() ?? null,
                 validUntil: offer.validUntil?.toISOString() ?? null,
@@ -467,6 +492,7 @@ export default async function SubmissionDetailPage({ params }: Params) {
               refCode={submission.refCode}
               vehicleTitle={vehicleTitle}
               publicToken={submission.publicToken}
+              liveBand={liveBand}
             />
           ) : (
             <Card>

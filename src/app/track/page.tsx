@@ -14,9 +14,14 @@ export default function TrackPage() {
     <div className="flex min-h-dvh flex-col bg-ink-50">
       <header className="border-b border-ink-200 bg-white">
         <div className="mx-auto max-w-5xl px-4 py-3 sm:px-6">
-          <Link href="/" aria-label="M Lhuillier AutoQuote home">
+          <a
+            href="https://www.mlhuillier.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="M Lhuillier home (opens in a new tab)"
+          >
             <Logo />
-          </Link>
+          </a>
         </div>
       </header>
 

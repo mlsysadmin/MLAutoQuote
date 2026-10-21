@@ -3,6 +3,8 @@ import { requireDraftAccess } from "@/lib/draft-access";
 import { missingForSubmit } from "@/lib/submission-mapper";
 import { generateOffer } from "@/lib/valuation";
 import { upsertCustomerFromIntake } from "@/lib/kyc";
+import { notifySubmissionReceived } from "@/lib/notify";
+import { env } from "@/lib/env";
 import { writeAudit } from "@/lib/auth";
 import { clientIp } from "@/lib/rate-limit";
 
@@ -91,6 +93,18 @@ export async function POST(req: Request, { params }: Params) {
       where: { id },
       data: { status: "IN_REVIEW" },
     });
+  }
+
+  // Confirm receipt: an SMS with the reference, and an email with the link.
+  // A gateway being down must not cost the customer their submission — they
+  // are already looking at the tracking page.
+  try {
+    await notifySubmissionReceived({
+      submission,
+      link: `${env.appUrl}/track/${submission.publicToken}`,
+    });
+  } catch (err) {
+    console.error("submission confirmation failed", err);
   }
 
   await writeAudit({

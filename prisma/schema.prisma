@@ -394,6 +394,11 @@ model Offer {
   breakdown Json
 
   appraiserNotes  String? @db.Text // internal only
+
+  // Why the appraiser went above the system's recommendation. Required when
+  // they do — see src/lib/offer-reasons.ts — so uplifts can be reviewed as a
+  // pattern rather than one note at a time.
+  overrideReason  String? @db.VarChar(40)
   customerMessage String? @db.Text // shown to the customer with the offer
 
   validUntil  DateTime?

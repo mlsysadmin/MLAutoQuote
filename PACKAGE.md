@@ -126,7 +126,7 @@ gcloud sql instances create ml-autoquote-db \
   --region=asia-southeast1 --storage-auto-increase --backup-start-time=18:00
 gcloud sql databases create ml_autoquote --instance=ml-autoquote-db \
   --charset=utf8mb4 --collation=utf8mb4_unicode_ci
-gcloud sql users create autoquote --instance=ml-autoquote-db --password='STRONG_PASSWORD'
+gcloud sql users create autoquote --instance=ml-autoquote-db --password='1234567890'
 
 # 3 — photo bucket (private; browsers reach objects only via signed URLs)
 gcloud storage buckets create gs://PROJECT-autoquote-photos \
@@ -230,7 +230,9 @@ on your PATH:
   -Email you@mlhuillier.com -Name "Your Name" -Role ADMIN
 ```
 
-It prints a generated password once. Repeat with `-Role APPRAISER` per appraiser.
+The account gets the development password `1234567890`; pass `-Password` (or
+`--password`) to set a real one before the account leaves the team. Repeat with
+`-Role APPRAISER` per appraiser.
 
 **Turn on SMS** — offers are useless if nobody hears about them:
 

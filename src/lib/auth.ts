@@ -3,6 +3,7 @@ import "server-only";
 import bcrypt from "bcryptjs";
 import type { Role } from "@prisma/client";
 import { prisma } from "./prisma";
+import { env } from "./env";
 import { getSessionUser, type SessionUser } from "./session";
 
 const BCRYPT_ROUNDS = 10;
@@ -38,7 +39,16 @@ export async function authenticate(
     },
   });
 
-  const ok = await verifyPassword(password, user?.passwordHash ?? DUMMY_HASH);
+  // With AUTH_ALLOW_BLANK_PASSWORD on (development only — see env.ts), an empty
+  // box is accepted for an account that exists and is active. The account still
+  // has to be real: this skips the password, not the lookup.
+  const skipPassword =
+    env.allowBlankStaffPassword && password.trim().length === 0;
+
+  const ok = skipPassword
+    ? true
+    : await verifyPassword(password, user?.passwordHash ?? DUMMY_HASH);
+
   if (!user || !user.active || !ok) return null;
 
   await prisma.user.update({

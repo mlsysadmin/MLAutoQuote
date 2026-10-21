@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Alert } from "@/components/ui";
 import { PHOTO_SLOTS, REQUIRED_SLOTS, type PhotoSlotSpec } from "@/lib/wizard";
 import { prepareImage, formatBytes, withConcurrency } from "@/lib/image-client";
@@ -31,16 +31,13 @@ export function StepPhotos({
   setPhotos: React.Dispatch<React.SetStateAction<UploadedPhoto[]>>;
 }) {
   const [globalError, setGlobalError] = useState<string | null>(null);
-  const previewUrls = useRef<Set<string>>(new Set());
 
-  // Object URLs are a memory leak if left behind on a long session.
-  useEffect(() => {
-    const urls = previewUrls.current;
-    return () => {
-      urls.forEach((u) => URL.revokeObjectURL(u));
-      urls.clear();
-    };
-  }, []);
+  // Thumbnails are object URLs, and their lifetime belongs to the `photos`
+  // array — which lives in the wizard and outlives this component. This step
+  // unmounts every time the customer moves to another step, so revoking here
+  // would leave every thumbnail a broken image the moment they came back.
+  // Revoking happens where a photo is actually dropped: in `remove` below, and
+  // in the wizard when the whole form goes away.
 
   const upload = useCallback(
     async (slot: string, file: File) => {
@@ -64,8 +61,12 @@ export function StepPhotos({
         );
 
       try {
-        const prepared = await prepareImage(file);
-        previewUrls.current.add(prepared.previewUrl);
+        // A government ID is a landscape card. Someone holding their phone
+        // upright produces a sideways photo that nobody can read, so that one
+        // slot is turned to landscape automatically.
+        const prepared = await prepareImage(file, {
+          preferLandscape: slot === "DOC_ID",
+        });
         patch({
           previewUrl: prepared.previewUrl,
           status: "uploading",
@@ -124,10 +125,8 @@ export function StepPhotos({
   const remove = useCallback(
     async (photo: UploadedPhoto) => {
       setPhotos((prev) => prev.filter((p) => p.key !== photo.key));
-      if (photo.previewUrl) {
-        URL.revokeObjectURL(photo.previewUrl);
-        previewUrls.current.delete(photo.previewUrl);
-      }
+      // This photo is gone for good, so its thumbnail can be released.
+      if (photo.previewUrl) URL.revokeObjectURL(photo.previewUrl);
       if (photo.id) {
         try {
           await fetch(`/api/photos/${photo.id}`, { method: "DELETE" });

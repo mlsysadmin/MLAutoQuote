@@ -24,7 +24,7 @@ param(
   [string]$RootUser = "root",
   [string]$Database = "ml_autoquote",
   [string]$AppUser = "autoquote",
-  [string]$AppPassword = "LocalDev_2026!",
+  [string]$AppPassword = "1234567890",
   [switch]$SkipSeed
 )
 
@@ -103,5 +103,5 @@ finally { Pop-Location }
 Write-Host ""
 Write-Host "Ready. Start the app with: npm run dev" -ForegroundColor Green
 Write-Host "  Staff portal: http://localhost:3000/staff/login"
-Write-Host "  Sign in as appraiser@mlhuillier.com / ChangeMe123!"
+Write-Host "  Sign in as appraiser@mlhuillier.com / 1234567890"
 Write-Host ""

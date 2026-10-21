@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ButtonLink, Logo } from "@/components/ui";
+import { Brand, ButtonLink, Logo } from "@/components/ui";
 import { CrossSell } from "@/components/CrossSell";
 import { faqJsonLd } from "@/lib/seo";
 import { POPULAR_GUIDES } from "@/lib/guides";
@@ -75,9 +75,14 @@ export default function HomePage() {
 
       <header className="sticky top-0 z-30 border-b border-ink-200/80 bg-white/95 backdrop-blur-sm">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-          <Link href="/" aria-label="M Lhuillier AutoQuote home">
+          <a
+            href="https://www.mlhuillier.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="M Lhuillier home (opens in a new tab)"
+          >
             <Logo />
-          </Link>
+          </a>
           <nav className="flex items-center gap-1">
             <Link
               href="/track"
@@ -99,8 +104,8 @@ export default function HomePage() {
         <section className="px-4 pb-12 pt-10 sm:px-6 sm:pb-16 sm:pt-16">
           <div className="mx-auto max-w-6xl lg:grid lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-14">
             <div>
-              <p className="inline-flex items-center gap-2 rounded-full bg-ml-orange-50 px-3.5 py-1.5 text-xs font-semibold text-ml-orange-800">
-                <span className="size-1.5 rounded-full bg-ml-orange-500" />
+              <p className="inline-flex items-center gap-2 rounded-full bg-ml-red-50 px-3.5 py-1.5 text-xs font-semibold text-ml-red-800">
+                <span className="size-1.5 rounded-full bg-ml-red-500" />
                 Free appraisal · No obligation
               </p>
 
@@ -113,7 +118,7 @@ export default function HomePage() {
               <p className="mt-5 max-w-xl text-base leading-relaxed text-ink-700 sm:text-lg">
                 Upload your details and photos once. We price your car against
                 live marketplace listings, a licensed appraiser reviews it, and
-                you get a cash offer you can take to any M Lhuillier branch.
+                you get a cash offer you can take to any <Brand /> branch.
               </p>
 
               <div className="mt-7 flex flex-col gap-3 sm:flex-row">
@@ -175,7 +180,7 @@ export default function HomePage() {
                     "The odometer reading",
                   ].map((item) => (
                     <li key={item} className="flex items-start gap-3">
-                      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-ml-orange-500">
+                      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-ml-red-500">
                         <svg
                           viewBox="0 0 16 16"
                           className="size-3 text-white"
@@ -224,7 +229,7 @@ export default function HomePage() {
                   key={step.n}
                   className="rounded-[20px] bg-white p-6 shadow-[0_4px_12px_rgb(0_0_0/0.08)] transition-shadow duration-200 hover:shadow-[0_10px_30px_rgb(0_0_0/0.15)]"
                 >
-                  <span className="flex size-9 items-center justify-center rounded-full bg-ml-orange-500 text-sm font-bold text-white nums">
+                  <span className="flex size-9 items-center justify-center rounded-full bg-ml-red-500 text-sm font-bold text-white nums">
                     {step.n}
                   </span>
                   <h3 className="mt-4 text-lg font-bold text-ink-900">
@@ -240,7 +245,7 @@ export default function HomePage() {
         </section>
 
         {/* ── Transparency ───────────────────────────────────────────── */}
-        <section className="bg-ml-orange-500 px-4 py-14 text-white sm:px-6 sm:py-20">
+        <section className="bg-ml-red-500 px-4 py-14 text-white sm:px-6 sm:py-20">
           <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-2 lg:items-center">
             <div>
               <h2 className="text-2xl font-bold sm:text-3xl">
@@ -308,7 +313,8 @@ export default function HomePage() {
               <li>
                 <Link
                   href="/value"
-                  className="inline-block rounded-full px-4 prefetch={false} py-2 text-sm font-semibold text-ml-orange-700 hover:underline"
+                  prefetch={false}
+                  className="inline-block rounded-full px-4 py-2 text-sm font-semibold text-ml-red-700 hover:underline"
                 >
                   All makes →
                 </Link>

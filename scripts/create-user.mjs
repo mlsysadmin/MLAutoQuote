@@ -6,13 +6,17 @@
  * Reads DATABASE_URL from the environment. Against Cloud SQL, run the Cloud SQL
  * Auth Proxy first (scripts/create-user.ps1 does that for you).
  *
- * If --password is omitted a strong one is generated and printed once.
+ * With no --password the account gets the standard development password. Pass
+ * --remote (the wrapper scripts do, when they tunnel to Cloud SQL) and it says
+ * so loudly, because that default has no business on a deployed service.
  */
 
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { randomBytes } from "node:crypto";
 import { parseArgs } from "node:util";
+
+/** The development standard, used everywhere a password is seeded or defaulted. */
+const DEV_PASSWORD = "1234567890";
 
 const { values } = parseArgs({
   options: {
@@ -21,6 +25,7 @@ const { values } = parseArgs({
     role: { type: "string", default: "APPRAISER" },
     password: { type: "string" },
     branch: { type: "string" },
+    remote: { type: "boolean", default: false },
   },
 });
 
@@ -44,7 +49,7 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
-const password = values.password ?? generatePassword();
+const password = values.password ?? DEV_PASSWORD;
 const prisma = new PrismaClient();
 
 try {
@@ -75,19 +80,17 @@ try {
   console.log(`  Role:          ${user.role}`);
   if (!values.password) {
     console.log("");
-    console.log(`  Password:      ${password}`);
-    console.log("  This is shown once. Give it to them over a private channel");
-    console.log("  and have them change it after first sign-in.");
+    console.log(`  Password:      ${password}  (development standard)`);
+
+    if (values.remote) {
+      console.log("");
+      console.log("  ⚠  This account is on a DEPLOYED database, and it can");
+      console.log("     release offers and open customers' CR, OR and ID scans.");
+      console.log("     Re-run with --password '<something only they know>'");
+      console.log("     before anyone outside the team uses it.");
+    }
   }
   console.log("");
 } finally {
   await prisma.$disconnect();
-}
-
-/** 20 characters from a set that survives being typed from a sticky note. */
-function generatePassword() {
-  const alphabet =
-    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
-  const bytes = randomBytes(20);
-  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 }

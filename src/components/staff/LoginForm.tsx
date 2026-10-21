@@ -4,7 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Field, Input } from "@/components/ui";
 
-export function LoginForm() {
+export function LoginForm({
+  /** True on a build where the password box may be left empty (never in production). */
+  allowBlankPassword = false,
+}: {
+  allowBlankPassword?: boolean;
+}) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -62,7 +67,12 @@ export function LoginForm() {
         )}
       </Field>
 
-      <Field label="Password" required error={fields.password}>
+      <Field
+        label="Password"
+        required={!allowBlankPassword}
+        error={fields.password}
+        hint={allowBlankPassword ? "Leave empty on this build." : undefined}
+      >
         {({ id, invalid }) => (
           <Input
             id={id}

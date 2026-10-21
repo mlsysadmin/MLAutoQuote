@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ID_TYPES } from "./id-types";
+import { OVERRIDE_REASON_VALUES } from "./offer-reasons";
 
 /**
  * Wizard validation.
@@ -209,10 +210,18 @@ export const photoConfirmSchema = z.object({
 
 export const loginSchema = z.object({
   email: z.string().trim().email("Enter your work email."),
-  password: z.string().min(1, "Enter your password."),
+  // Empty is allowed here so the server can decide: with
+  // AUTH_ALLOW_BLANK_PASSWORD on it signs the user in, and without it the
+  // attempt fails the same way a wrong password does.
+  password: z.string(),
 });
 
 export const offerAdjustSchema = z.object({
+  overrideReason: z
+    .enum(OVERRIDE_REASON_VALUES)
+    .optional()
+    .nullable()
+    .or(z.literal("").transform(() => null)),
   appraiserOfferPhp: z
     .number()
     .int()

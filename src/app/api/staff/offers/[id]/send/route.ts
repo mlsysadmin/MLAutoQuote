@@ -2,6 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { env } from "@/lib/env";
 import { requireStaff, writeAudit } from "@/lib/auth";
 import { effectiveOfferPhp } from "@/lib/valuation";
+import {
+  requiresJustification,
+  MIN_OVERRIDE_NOTE_LENGTH,
+} from "@/lib/offer-reasons";
 import { notifyOfferSent } from "@/lib/notify";
 import { clientIp } from "@/lib/rate-limit";
 
@@ -58,6 +62,32 @@ export async function POST(req: Request, { params }: Params) {
     );
   }
 
+  // Going above the system's recommendation is the one adjustment that costs
+  // money when it's wrong, so it has to be justified. Enforced here rather than
+  // only in the form: the form can be bypassed, this cannot.
+  if (requiresJustification(finalPhp, offer.systemOfferPhp)) {
+    if (!offer.overrideReason) {
+      return Response.json(
+        {
+          error:
+            "This offer is above the system's recommendation. Choose a reason before sending.",
+          field: "overrideReason",
+        },
+        { status: 400 },
+      );
+    }
+    if ((offer.appraiserNotes ?? "").trim().length < MIN_OVERRIDE_NOTE_LENGTH) {
+      return Response.json(
+        {
+          error:
+            "Add an internal note explaining the uplift before sending — at least a sentence.",
+          field: "appraiserNotes",
+        },
+        { status: 400 },
+      );
+    }
+  }
+
   const validUntil = new Date(
     Date.now() + env.valuation.offerValidityDays * 24 * 60 * 60 * 1000,
   );
@@ -78,7 +108,11 @@ export async function POST(req: Request, { params }: Params) {
         offerId: id,
         type: "SENT_TO_CUSTOMER",
         actorUserId: auth.id,
-        payload: { finalOfferPhp: finalPhp },
+        payload: {
+          finalOfferPhp: finalPhp,
+          systemOfferPhp: offer.systemOfferPhp,
+          overrideReason: offer.overrideReason,
+        },
       },
     }),
     prisma.submission.update({
@@ -108,7 +142,12 @@ export async function POST(req: Request, { params }: Params) {
     entity: "Offer",
     entityId: id,
     ip: clientIp(req),
-    meta: { finalOfferPhp: finalPhp, refCode: offer.submission.refCode },
+    meta: {
+      finalOfferPhp: finalPhp,
+      systemOfferPhp: offer.systemOfferPhp,
+      overrideReason: offer.overrideReason,
+      refCode: offer.submission.refCode,
+    },
   });
 
   return Response.json({

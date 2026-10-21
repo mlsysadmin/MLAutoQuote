@@ -26,6 +26,12 @@ param(
   [string]$SqlInstance = "ml-autoquote-db",
   [string]$Database = "ml_autoquote",
   [string]$DbUser = "autoquote",
+  # The house development password, used here too so every environment matches.
+  # What actually keeps this instance closed is that it has no public IP and
+  # Cloud Run reaches it over the Cloud SQL socket, which requires the
+  # roles/cloudsql.client IAM grant. If anyone ever gives the instance a public
+  # IP or an authorised network, set a real password here first.
+  [string]$DbPassword = "1234567890",
   [string]$Bucket = "",
   [string]$Repo = "ml-autoquote",
   [string]$SqlTier = "db-g1-small",
@@ -143,7 +149,6 @@ if (-not $SkipInfra) {
   Step "Cloud SQL for MySQL"
   if (Exists "gcloud sql instances describe $SqlInstance") {
     Write-Host "  Instance already exists."
-    $dbPassword = $null
   } else {
     Write-Host "  Creating instance — this takes 5-10 minutes."
     gcloud sql instances create $SqlInstance `
@@ -153,7 +158,6 @@ if (-not $SkipInfra) {
       --storage-auto-increase `
       --backup-start-time=18:00 `
       --availability-type=ZONAL
-    $dbPassword = NewSecretValue 24
   }
 
   if (-not (Exists "gcloud sql databases describe $Database --instance=$SqlInstance")) {
@@ -163,11 +167,13 @@ if (-not $SkipInfra) {
 
   $existingUsers = (gcloud sql users list --instance=$SqlInstance --format="value(name)") -split "`n"
   if ($existingUsers -notcontains $DbUser) {
-    if (-not $dbPassword) { $dbPassword = NewSecretValue 24 }
-    gcloud sql users create $DbUser --instance=$SqlInstance --password="$dbPassword"
+    gcloud sql users create $DbUser --instance=$SqlInstance --password="$DbPassword"
     Write-Host "  Database user created." -ForegroundColor Green
   } else {
-    Write-Host "  Database user already exists."
+    # Re-set it, so a re-run always leaves the stored DATABASE_URL and the
+    # actual account in agreement.
+    gcloud sql users set-password $DbUser --instance=$SqlInstance --password="$DbPassword"
+    Write-Host "  Database user already exists — password re-applied."
   }
 
   # ── Photo bucket ───────────────────────────────────────────────────────────
@@ -206,16 +212,18 @@ if (-not $SkipInfra) {
     Write-Host "  SESSION_SECRET already exists."
   }
 
+  # Prisma needs the password percent-encoded inside the URL.
+  $encoded = [System.Uri]::EscapeDataString($DbPassword)
+  $url = "mysql://${DbUser}:${encoded}@localhost/${Database}?socket=/cloudsql/${connectionName}"
+
   if (-not (Exists "gcloud secrets describe autoquote-database-url")) {
-    if (-not $dbPassword) {
-      $dbPassword = Read-Host "  Enter the password for MySQL user '$DbUser'"
-    }
-    $encoded = [System.Uri]::EscapeDataString($dbPassword)
-    $url = "mysql://${DbUser}:${encoded}@localhost/${Database}?socket=/cloudsql/${connectionName}"
     $url | gcloud secrets create autoquote-database-url --data-file=-
     Write-Host "  DATABASE_URL created."
   } else {
-    Write-Host "  DATABASE_URL already exists."
+    # The account's password is re-applied on every run, so the stored URL has
+    # to be re-applied with it or the service is left holding a stale one.
+    $url | gcloud secrets versions add autoquote-database-url --data-file=-
+    Write-Host "  DATABASE_URL updated to match the database user."
   }
 }
 

@@ -70,6 +70,10 @@ command -v cloud-sql-proxy >/dev/null 2>&1 || {
 
 CONNECTION_NAME="${PROJECT_ID}:${REGION}:${SQL_INSTANCE}"
 
+# Everything past this point writes to the deployed database. The tunnel makes
+# it look like 127.0.0.1, so tell create-user.mjs plainly that it is not local.
+ARGS+=(--remote)
+
 printf '\033[36mReading the connection string from Secret Manager...\033[0m\n'
 SECRET=$(gcloud secrets versions access latest \
   --secret=autoquote-database-url --project="$PROJECT_ID")

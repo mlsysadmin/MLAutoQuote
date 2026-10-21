@@ -11,10 +11,21 @@ import {
   CardHeader,
   OfferBadge,
   PesoInput,
+  Select,
   Textarea,
 } from "@/components/ui";
-import { formatPeso, parsePeso, roundToThousand } from "@/lib/money";
+import {
+  formatCompactPeso,
+  formatPeso,
+  parsePeso,
+  roundToThousand,
+} from "@/lib/money";
 import type { OfferBreakdown } from "@/lib/valuation";
+import {
+  OVERRIDE_REASONS,
+  MIN_OVERRIDE_NOTE_LENGTH,
+  requiresJustification,
+} from "@/lib/offer-reasons";
 import type { OfferStatus } from "@prisma/client";
 
 type OfferView = {
@@ -29,6 +40,7 @@ type OfferView = {
   compHighPhp: number;
   compCount: number;
   appraiserNotes: string | null;
+  overrideReason: string | null;
   customerMessage: string | null;
   sentAt: string | null;
   validUntil: string | null;
@@ -50,12 +62,19 @@ export function OfferEditor({
   refCode,
   vehicleTitle,
   publicToken,
+  liveBand,
 }: {
   offer: OfferView;
   breakdown: OfferBreakdown | null;
   refCode: string;
   vehicleTitle: string;
   publicToken: string;
+  /**
+   * The band as the comparables table stands right now, recomputed on the
+   * server whenever a listing is excluded or added. Null when there is nothing
+   * usable to compute from, in which case the offer's own snapshot is shown.
+   */
+  liveBand: { low: number; mid: number; high: number; count: number } | null;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -66,6 +85,10 @@ export function OfferEditor({
     offer.finalOfferPhp ?? offer.appraiserOfferPhp ?? offer.systemOfferPhp,
   );
   const [notes, setNotes] = useState(offer.appraiserNotes ?? "");
+  const [overrideReason, setOverrideReason] = useState(
+    offer.overrideReason ?? "",
+  );
+  const [fieldError, setFieldError] = useState<string | null>(null);
   const [message, setMessage] = useState(offer.customerMessage ?? "");
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -77,7 +100,8 @@ export function OfferEditor({
   const dirty =
     amount !== (offer.appraiserOfferPhp ?? offer.systemOfferPhp) ||
     notes !== (offer.appraiserNotes ?? "") ||
-    message !== (offer.customerMessage ?? "");
+    message !== (offer.customerMessage ?? "") ||
+    overrideReason !== (offer.overrideReason ?? "");
 
   // The history push stays outside the state updater: React invokes updaters
   // more than once (StrictMode, and again when it replays work), so mutating a
@@ -162,6 +186,7 @@ export function OfferEditor({
           appraiserOfferPhp: amount,
           appraiserNotes: notes || null,
           customerMessage: message || null,
+          overrideReason: overrideReason || null,
         }),
       });
       if (!res.ok) {
@@ -212,11 +237,17 @@ export function OfferEditor({
       const res = await fetch(`/api/staff/offers/${offer.id}/send`, {
         method: "POST",
       });
-      const body = (await res.json().catch(() => ({}))) as { error?: string };
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        field?: string;
+      };
       if (!res.ok) {
         setError(body.error ?? "Couldn't send.");
+        setFieldError(body.field ?? null);
+        setConfirming(false);
         return;
       }
+      setFieldError(null);
       setConfirming(false);
       setToast("Offer sent to the customer");
       startTransition(() => router.refresh());
@@ -228,8 +259,62 @@ export function OfferEditor({
   }
 
   const delta = amount - offer.systemOfferPhp;
+
+  // The band shown is the live one — recomputed from whatever is included in
+  // the comparables table right now — not the snapshot frozen on the offer when
+  // it was last calculated. Excluding a listing has to move these numbers
+  // immediately, or the appraiser is reading a band that no longer matches the
+  // table directly beside it.
+  const band = liveBand ?? {
+    low: offer.compLowPhp,
+    mid: offer.compMidPhp,
+    high: offer.compHighPhp,
+    count: offer.compCount,
+  };
+
+  // The saved offer was priced off the old band, so once they diverge the
+  // figure below is stale until it is recalculated.
+  const bandMoved = Boolean(liveBand) && liveBand!.mid !== offer.compMidPhp;
+
   const pctOfMid =
-    offer.compMidPhp > 0 ? Math.round((amount / offer.compMidPhp) * 100) : null;
+    band.mid > 0 ? Math.round((amount / band.mid) * 100) : null;
+
+  // Above the system's recommendation, a reason and a real note are required.
+  // The same rule runs on the server when the offer is sent.
+  const needsJustification = requiresJustification(
+    amount,
+    offer.systemOfferPhp,
+  );
+  const justificationMissing = needsJustification
+    ? !overrideReason
+      ? "overrideReason"
+      : notes.trim().length < MIN_OVERRIDE_NOTE_LENGTH
+        ? "appraiserNotes"
+        : null
+    : null;
+
+  const selectedReasonHint = OVERRIDE_REASONS.find(
+    (r) => r.value === overrideReason,
+  )?.hint;
+
+  // Where this offer sits against the middle of the market, spelled out for the
+  // confirmation dialog. Paying above the mid is almost always a slip — we have
+  // to resell against those same listings — so it is called out in as many
+  // words rather than left to be inferred from a percentage.
+  const midComparison = (() => {
+    if (band.mid <= 0) return null;
+
+    const delta = amount - band.mid;
+    if (delta === 0) {
+      return { text: "exactly the mid market price", className: "text-ink-900" };
+    }
+
+    const direction = delta > 0 ? "more" : "less";
+    return {
+      text: `${formatCompactPeso(Math.abs(delta))} ${direction} than the mid market price`,
+      className: delta > 0 ? "text-ml-red-600" : "text-[var(--color-ok)]",
+    };
+  })();
 
   return (
     <Card>
@@ -247,12 +332,29 @@ export function OfferEditor({
         ) : null}
 
         <MarketBand
-          low={offer.compLowPhp}
-          mid={offer.compMidPhp}
-          high={offer.compHighPhp}
-          count={offer.compCount}
+          low={band.low}
+          mid={band.mid}
+          high={band.high}
+          count={band.count}
           offer={amount}
         />
+
+        {bandMoved && !locked ? (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-[var(--color-warn-bg)] px-4 py-3 text-sm ring-1 ring-inset ring-amber-300">
+            <span className="text-ink-800">
+              The band moved. {formatPeso(offer.systemOfferPhp)} below was
+              priced off the previous one.
+            </span>
+            <button
+              type="button"
+              onClick={recalculate}
+              disabled={busy === "recalc"}
+              className="font-semibold text-ml-red-700 hover:underline disabled:opacity-50"
+            >
+              {busy === "recalc" ? "Recalculating…" : "Recalculate"}
+            </button>
+          </div>
+        ) : null}
 
         <div className="mt-6">
           <label
@@ -362,21 +464,75 @@ export function OfferEditor({
         {!locked ? (
           <>
             <div className="mt-5 space-y-4">
+              {needsJustification ? (
+                <div className="rounded-xl bg-[var(--color-warn-bg)] p-4 ring-1 ring-inset ring-amber-300">
+                  <p className="text-sm font-semibold text-ink-900">
+                    You&apos;re offering{" "}
+                    {formatCompactPeso(amount - offer.systemOfferPhp)} above the
+                    system&apos;s recommendation
+                  </p>
+                  <p className="mt-1 text-xs text-ink-700">
+                    Record why. This is kept with the offer and reviewed with
+                    the branch&apos;s other uplifts.
+                  </p>
+
+                  <label
+                    htmlFor="override-reason"
+                    className="mt-3 block text-xs font-bold uppercase tracking-wider text-ink-600"
+                  >
+                    Reason <span className="text-ml-red-600">*</span>
+                  </label>
+                  <Select
+                    id="override-reason"
+                    value={overrideReason}
+                    invalid={Boolean(fieldError === "overrideReason")}
+                    className="mt-1.5"
+                    onChange={(e) => setOverrideReason(e.target.value)}
+                  >
+                    <option value="">Choose a reason…</option>
+                    {OVERRIDE_REASONS.map((reason) => (
+                      <option key={reason.value} value={reason.value}>
+                        {reason.label}
+                      </option>
+                    ))}
+                  </Select>
+                  {selectedReasonHint ? (
+                    <p className="mt-1.5 text-xs text-ink-600">
+                      {selectedReasonHint}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div>
                 <label
                   htmlFor="appraiser-notes"
                   className="text-xs font-bold uppercase tracking-wider text-ink-500"
                 >
                   Internal notes
+                  {needsJustification ? (
+                    <span className="ml-1 text-ml-red-600">*</span>
+                  ) : null}
                 </label>
                 <Textarea
                   id="appraiser-notes"
                   rows={3}
                   value={notes}
-                  placeholder="Why you moved the number. Only staff see this."
+                  invalid={Boolean(fieldError === "appraiserNotes")}
+                  placeholder={
+                    needsJustification
+                      ? "Required: what you saw that the system couldn't."
+                      : "Why you moved the number. Only staff see this."
+                  }
                   className="mt-2"
                   onChange={(e) => setNotes(e.target.value)}
                 />
+                {needsJustification ? (
+                  <p className="mt-1 text-xs text-ink-500">
+                    At least a sentence — someone reviewing this in three
+                    months needs to understand the call.
+                  </p>
+                ) : null}
               </div>
 
               <div>
@@ -421,7 +577,7 @@ export function OfferEditor({
 
             <div className="mt-5 border-t border-ink-100 pt-5">
               {confirming ? (
-                <div className="rounded-xl bg-ml-orange-50 p-4 ring-1 ring-ml-orange-300">
+                <div className="rounded-xl bg-[var(--color-warn-bg)] p-4 ring-1 ring-amber-300">
                   <p className="text-sm font-semibold text-ink-900">
                     Send {formatPeso(amount)} to{" "}
                     {vehicleTitle.toLowerCase().startsWith("incomplete")
@@ -429,6 +585,16 @@ export function OfferEditor({
                       : "the customer"}
                     ?
                   </p>
+                  {midComparison ? (
+                    <p className="mt-2 text-sm text-ink-900">
+                      You are offering the customer{" "}
+                      <strong className={`font-bold ${midComparison.className}`}>
+                        {midComparison.text}
+                      </strong>
+                      . Are you sure you want to send it?
+                    </p>
+                  ) : null}
+
                   <p className="mt-1 text-xs text-ink-700">
                     They get a text with a link straight away. You can&apos;t
                     edit this version afterwards.
@@ -450,12 +616,20 @@ export function OfferEditor({
                 <Button
                   size="lg"
                   className="w-full"
-                  disabled={amount <= 0}
+                  disabled={amount <= 0 || Boolean(justificationMissing)}
                   onClick={() => setConfirming(true)}
                 >
                   Send offer to customer
                 </Button>
               )}
+
+              {!confirming && justificationMissing ? (
+                <p className="mt-2 text-center text-xs text-ink-600">
+                  {justificationMissing === "overrideReason"
+                    ? "Choose a reason above before sending."
+                    : "Add an internal note above before sending."}
+                </p>
+              ) : null}
             </div>
           </>
         ) : (
@@ -546,7 +720,7 @@ function MarketBand({
         <Column label="Highest" value={high} align="right" />
       </div>
 
-      <div className="relative mt-3 h-2 rounded-full bg-gradient-to-r from-ink-200 via-ml-orange-300 to-ink-200">
+      <div className="relative mt-3 h-2 rounded-full bg-gradient-to-r from-ink-200 via-ml-red-300 to-ink-200">
         <span
           className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-ink-900 ring-2 ring-white"
           style={{ left: `${pos(mid)}%` }}
@@ -647,7 +821,7 @@ function Breakdown({ breakdown }: { breakdown: OfferBreakdown }) {
         </div>
 
         {breakdown.clampedBy ? (
-          <p className="rounded-lg bg-ml-orange-50 px-3 py-2 text-xs text-ml-orange-800">
+          <p className="rounded-lg bg-[var(--color-warn-bg)] px-3 py-2 text-xs text-[var(--color-warn)]">
             {breakdown.clampedBy === "ceiling"
               ? "Capped at 95% of the lowest live asking price — we have to resell against it."
               : "Raised to the floor: the adjustments would otherwise have taken it below 40% of market mid."}

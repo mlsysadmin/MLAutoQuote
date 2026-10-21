@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
@@ -79,9 +78,14 @@ export default async function TrackPage({ params }: Params) {
     <div className="min-h-dvh bg-ink-50">
       <header className="border-b border-ink-200 bg-white">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <Link href="/" aria-label="M Lhuillier AutoQuote home">
+          <a
+            href="https://www.mlhuillier.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="M Lhuillier home (opens in a new tab)"
+          >
             <Logo />
-          </Link>
+          </a>
           <span className="font-mono text-xs font-bold text-ink-500">
             {submission.refCode}
           </span>
@@ -116,7 +120,7 @@ export default async function TrackPage({ params }: Params) {
             {/* ── The number ─────────────────────────────────────────── */}
             {/* The brand's accent surface, carrying the one number the
                 customer came for. */}
-            <div className="animate-rise mt-6 overflow-hidden rounded-[20px] bg-ml-orange-500 text-white shadow-[0_10px_30px_rgb(255_95_0/0.3)]">
+            <div className="animate-rise mt-6 overflow-hidden rounded-[20px] bg-ml-red-500 text-white shadow-[0_10px_30px_rgb(255_95_0/0.3)]">
               {/* Only the figure is big enough for white on orange to clear
                   contrast. The supporting lines are solid white at a larger
                   size, and the appraiser's message — a full paragraph — sits
@@ -189,7 +193,7 @@ export default async function TrackPage({ params }: Params) {
                           rel="noreferrer nofollow"
                           className={`flex items-center justify-between gap-4 rounded-2xl bg-white px-5 py-4 ring-1 transition-shadow hover:shadow-md ${
                             bucket === "MID"
-                              ? "ring-2 ring-ml-orange-400"
+                              ? "ring-2 ring-ml-red-400"
                               : "ring-ink-200/70"
                           }`}
                         >
@@ -250,7 +254,7 @@ export default async function TrackPage({ params }: Params) {
                   "Papers are signed and you're paid the same day.",
                 ].map((step, i) => (
                   <li key={step} className="flex gap-3">
-                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-ml-orange-400 text-[0.7rem] font-black text-ink-950">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-ml-red-400 text-[0.7rem] font-black text-ink-950">
                       {i + 1}
                     </span>
                     {step}
@@ -307,10 +311,10 @@ function PendingState({
   return (
     <div className="animate-rise">
       <div className="rounded-3xl bg-white p-7 text-center ring-1 ring-ink-200/70 sm:p-10">
-        <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-ml-orange-100">
+        <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-ml-red-100">
           <svg
             viewBox="0 0 24 24"
-            className="size-7 text-ml-orange-700"
+            className="size-7 text-ml-red-700"
             aria-hidden="true"
           >
             <circle
@@ -347,7 +351,7 @@ function PendingState({
                   stage.done
                     ? "bg-[var(--color-ok)] text-white"
                     : stage.active
-                      ? "bg-ml-orange-400 text-ink-950"
+                      ? "bg-ml-red-400 text-ink-950"
                       : "bg-ink-200 text-ink-500"
                 }`}
               >

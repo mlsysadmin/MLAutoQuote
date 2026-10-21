@@ -1,11 +1,17 @@
+import Image from "next/image";
+
 /**
- * Brand lockup, in the shape mlhuillier.com uses: "M◆LHUILLIER" set tight in
- * the brand red, with the product name beneath.
+ * Brand lockup: the official M Lhuillier wordmark, with the product name
+ * beneath it.
  *
- * Drawn as text plus one tiny inline diamond rather than the official artwork —
- * that file is a 45 KB bitmap wrapped in SVG, which would cost more to load
- * than the rest of the page. If you want the exact asset, drop it in
- * public/brand/ and swap the markup here; nothing else references it.
+ * `public/brand/ml-logo.svg` is the artwork mlhuillier.com itself serves
+ * (`ml-logo-2.svg`), copied unaltered — a high-resolution bitmap wrapped in
+ * SVG. It is deliberately not redrawn as vector: a financial brand's mark is
+ * not something to approximate, and a trace that is a few degrees off reads as
+ * wrong to anyone who knows it.
+ *
+ * It is referenced as a file rather than inlined, so the embedded raster never
+ * passes through JSX and the browser can cache it once for every page.
  */
 export function Logo({
   className = "",
@@ -13,37 +19,34 @@ export function Logo({
   showProduct = true,
 }: {
   className?: string;
-  /** White treatment, for dark or orange surfaces. */
+  /**
+   * For dark or red surfaces. M Lhuillier publish no inverted artwork, so the
+   * unaltered mark sits on a white chip rather than being recoloured.
+   */
   mono?: boolean;
   showProduct?: boolean;
 }) {
-  const ink = mono ? "text-white" : "text-ml-red-700";
-
   return (
     <span className={`inline-flex flex-col leading-none ${className}`}>
       <span
-        className={`flex items-center text-[1.3rem] font-bold tracking-[-0.01em] ${ink}`}
-        aria-label="M Lhuillier"
+        className={
+          mono ? "rounded-md bg-white px-2.5 py-1.5" : undefined
+        }
       >
-        M
-        <svg
-          viewBox="0 0 20 20"
-          className="mx-[0.06em] size-[0.72em]"
-          aria-hidden="true"
-          focusable="false"
-        >
-          <path
-            d="M10 1.6 18.4 10 10 18.4 1.6 10z"
-            fill="currentColor"
-          />
-          <path d="M10 4.6 15.4 10 10 15.4 4.6 10z" fill="#ffffff" opacity=".28" />
-        </svg>
-        LHUILLIER
+        <Image
+          src="/brand/ml-logo.svg"
+          alt="M Lhuillier"
+          width={248}
+          height={44}
+          // An SVG is served as-is; the optimizer has nothing to add.
+          unoptimized
+          className="h-[1.55rem] w-auto"
+        />
       </span>
       {showProduct ? (
         <span
-          className={`mt-[0.22em] text-[0.6rem] font-semibold uppercase tracking-[0.26em] ${
-            mono ? "text-white/80" : "text-ml-orange-600"
+          className={`mt-[0.3rem] text-[0.6rem] font-semibold uppercase tracking-[0.26em] ${
+            mono ? "text-white" : "text-ml-red-500"
           }`}
         >
           AutoQuote

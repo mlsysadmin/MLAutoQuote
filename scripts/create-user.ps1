@@ -51,6 +51,10 @@ if (-not (Get-Command cloud-sql-proxy -ErrorAction SilentlyContinue)) {
 
 $connectionName = "${ProjectId}:${Region}:${SqlInstance}"
 
+# Everything past this point writes to the deployed database. The tunnel makes
+# it look like 127.0.0.1, so tell create-user.mjs plainly that it is not local.
+$arguments += "--remote"
+
 Write-Host "Reading the connection string from Secret Manager..." -ForegroundColor Cyan
 $secret = gcloud secrets versions access latest --secret=autoquote-database-url --project=$ProjectId
 
