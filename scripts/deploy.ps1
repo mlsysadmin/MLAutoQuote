@@ -90,7 +90,8 @@ if (-not $SkipInfra) {
     cloudbuild.googleapis.com `
     secretmanager.googleapis.com `
     storage.googleapis.com `
-    iamcredentials.googleapis.com
+    iamcredentials.googleapis.com `
+    vision.googleapis.com
 
   # ── Artifact Registry ──────────────────────────────────────────────────────
   Step "Artifact Registry repository"
@@ -116,7 +117,11 @@ if (-not $SkipInfra) {
       "roles/cloudsql.client",
       "roles/secretmanager.secretAccessor",
       "roles/storage.objectAdmin",
-      "roles/iam.serviceAccountTokenCreator"
+      "roles/iam.serviceAccountTokenCreator",
+      # Lets the runtime call Cloud Vision to read uploaded IDs. It is the
+      # narrowest role that covers it: permission to use an enabled API in
+      # this project, and nothing else.
+      "roles/serviceusage.serviceUsageConsumer"
     )) {
     gcloud projects add-iam-policy-binding $ProjectId `
       --member="serviceAccount:$serviceAccount" `

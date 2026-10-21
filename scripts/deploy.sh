@@ -114,7 +114,7 @@ if [ "$SKIP_INFRA" != "true" ]; then
   gcloud services enable \
     run.googleapis.com sqladmin.googleapis.com artifactregistry.googleapis.com \
     cloudbuild.googleapis.com secretmanager.googleapis.com storage.googleapis.com \
-    iamcredentials.googleapis.com
+    iamcredentials.googleapis.com vision.googleapis.com
 
   step "Artifact Registry repository"
   if exists gcloud artifacts repositories describe "$REPO" --location="$REGION"; then
@@ -133,8 +133,11 @@ if [ "$SKIP_INFRA" != "true" ]; then
       --display-name="M Lhuillier AutoQuote runtime"
   fi
 
+  # serviceUsageConsumer lets the runtime call Cloud Vision to read uploaded
+  # IDs: permission to use an enabled API in this project, and nothing else.
   for role in roles/cloudsql.client roles/secretmanager.secretAccessor \
-              roles/storage.objectAdmin roles/iam.serviceAccountTokenCreator; do
+              roles/storage.objectAdmin roles/iam.serviceAccountTokenCreator \
+              roles/serviceusage.serviceUsageConsumer; do
     gcloud projects add-iam-policy-binding "$PROJECT_ID" \
       --member="serviceAccount:${SERVICE_ACCOUNT}" \
       --role="$role" --condition=None >/dev/null

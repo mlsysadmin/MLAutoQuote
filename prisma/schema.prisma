@@ -258,6 +258,12 @@ model Submission {
   idType         IdType?
   idNumber       String?   @db.VarChar(64)
   preferredBranch String?
+
+  // What the seller hopes to get, if they say. Optional on purpose: asking for
+  // it can anchor someone low, and plenty of people genuinely don't know. When
+  // it is given it tells the appraiser whether a deal is realistic before
+  // anyone drives anywhere.
+  askingPricePhp Int?
   consentGiven   Boolean @default(false)
 
   // ── Wizard progress ──

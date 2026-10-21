@@ -4,6 +4,7 @@ import { Brand, ButtonLink, Logo } from "@/components/ui";
 import { CrossSell } from "@/components/CrossSell";
 import { faqJsonLd } from "@/lib/seo";
 import { POPULAR_GUIDES } from "@/lib/guides";
+import { MarketRangeExample } from "@/components/MarketRangeExample";
 
 /**
  * Landing page.
@@ -105,20 +106,31 @@ export default function HomePage() {
           <div className="mx-auto max-w-6xl lg:grid lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-14">
             <div>
               <p className="inline-flex items-center gap-2 rounded-full bg-ml-red-50 px-3.5 py-1.5 text-xs font-semibold text-ml-red-800">
-                <span className="size-1.5 rounded-full bg-ml-red-500" />
-                Free appraisal · No obligation
+                <span className="size-1.5 animate-pulse rounded-full bg-ml-red-500" />
+                Paid same day · Cash at any branch
               </p>
 
-              <h1 className="mt-5 text-[2.1rem] font-bold leading-[1.1] text-ink-800 sm:text-5xl lg:text-[3.4rem]">
-                Sell your car.{" "}
-                <span className="text-ml-red-500">Get a real offer</span> in 24
-                hours.
+              {/*
+                The hook is the one frustration every Filipino who has listed a
+                car knows: "sure buyer only" is in half the classified ads
+                because the other half of enquiries never turn up. M Lhuillier
+                is that sure buyer, and the branch network is why.
+              */}
+              <h1 className="mt-5 text-[2.1rem] font-bold leading-[1.08] text-ink-800 sm:text-5xl lg:text-[3.4rem]">
+                Skip the text buyers.
+                <br />
+                Sell to a{" "}
+                <span className="text-ml-red-500">sure buyer.</span>
               </h1>
 
               <p className="mt-5 max-w-xl text-base leading-relaxed text-ink-700 sm:text-lg">
-                Upload your details and photos once. We price your car against
-                live marketplace listings, a licensed appraiser reviews it, and
-                you get a cash offer you can take to any <Brand /> branch.
+                No reposting every week. No meet-ups with strangers. No
+                haggling. Upload your car once, a licensed appraiser reviews it,
+                and you collect cash at any of <Brand />&apos;s{" "}
+                <strong className="font-semibold text-ink-900">
+                  3,000 branches nationwide
+                </strong>
+                .
               </p>
 
               <div className="mt-7 flex flex-col gap-3 sm:flex-row">
@@ -145,10 +157,16 @@ export default function HomePage() {
                 </ButtonLink>
               </div>
 
-              <dl className="mt-9 grid grid-cols-3 gap-3 border-t border-ink-200 pt-6">
+              {/* One line of Taglish: warm, and the two things people ask first. */}
+              <p className="mt-3.5 text-sm font-medium text-ink-500">
+                Libre ang appraisal. Walang obligasyon.
+              </p>
+
+              <dl className="mt-8 grid grid-cols-2 gap-x-3 gap-y-5 border-t border-ink-200 pt-6 sm:grid-cols-4">
                 {[
                   ["4 min", "to fill in"],
                   ["24 hrs", "to your offer"],
+                  ["3,000", "branches to collect"],
                   ["7 days", "offer validity"],
                 ].map(([value, label]) => (
                   <div key={label}>
@@ -258,34 +276,7 @@ export default function HomePage() {
               </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              {["Lowest", "Middle", "Highest"].map((label, i) => (
-                <div
-                  key={label}
-                  className={`rounded-[20px] px-3 py-6 text-center ${
-                    i === 1 ? "bg-white text-ink-900" : "bg-white/15"
-                  }`}
-                >
-                  <p className="text-xs font-bold uppercase tracking-wider opacity-80">
-                    {label}
-                  </p>
-                  <div
-                    aria-hidden="true"
-                    className={`mx-auto mt-3 h-2 rounded-full ${
-                      i === 1 ? "bg-ink-200" : "bg-white/30"
-                    }`}
-                    style={{ width: `${[55, 80, 65][i]}%` }}
-                  />
-                  <div
-                    aria-hidden="true"
-                    className={`mx-auto mt-2 h-2 rounded-full ${
-                      i === 1 ? "bg-ink-200" : "bg-white/30"
-                    }`}
-                    style={{ width: `${[40, 60, 45][i]}%` }}
-                  />
-                </div>
-              ))}
-            </div>
+            <MarketRangeExample />
           </div>
         </section>
 

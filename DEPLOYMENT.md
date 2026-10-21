@@ -144,6 +144,52 @@ way with `EMAIL_WEBHOOK_URL`.
 
 ---
 
+## Reading customers' IDs
+
+When someone uploads their ID, the app reads their name, date of birth, ID type
+and ID number off it, so the last step of the form is one field instead of five.
+Every value is shown to the customer to check before they submit — nothing is
+taken as fact.
+
+**On Cloud Run this needs nothing from you.** `deploy.ps1` enables the Vision
+API and grants the runtime account `roles/serviceusage.serviceUsageConsumer`,
+and the service authenticates as itself. Vision bills per image: the first
+1,000 a month are free, then about **USD 1.50 per 1,000** — one read per
+submission, so a thousand cars a month costs roughly a dollar.
+
+To check which reader answered, look for one line per read in Cloud Logging —
+it records the provider, how many of the four fields it found and how long it
+took, never the values themselves:
+
+```powershell
+gcloud run services logs read ml-autoquote --region=asia-southeast1 `
+  --limit=50 | Select-String "id-extraction"
+```
+
+If Vision can't answer — API not enabled, quota exhausted, a bad key — the read
+falls through to Tesseract, which runs inside the container and needs no
+credentials. Customers keep getting filled forms; the log line tells you it
+happened (`vision read nothing` followed by `local filled …`).
+
+**For development on your own machine**, Vision needs an API key, since there
+is no service account to borrow:
+
+```powershell
+gcloud services enable vision.googleapis.com --project YOUR_PROJECT_ID
+gcloud services api-keys create --display-name="AutoQuote dev Vision" `
+  --api-target=service=vision.googleapis.com
+```
+
+Paste the key into `GOOGLE_VISION_API_KEY` in `.env` (gitignored) and restart
+the dev server. Restricting it to the Vision API, as above, means a leaked key
+can read images and do nothing else. Without a key, development uses Tesseract
+— slightly worse on a creased card, and free.
+
+`ID_EXTRACTION_PROVIDER` pins a reader when you need to: `vision`, `claude`,
+`local`, or `off` to stop reading IDs altogether.
+
+---
+
 ## Turning on the comparables ingest
 
 If your team uses a tool to collect live marketplace prices, give it a token:
@@ -181,6 +227,8 @@ Set as Cloud Run environment variables, or from Secret Manager where marked.
 | `OFFER_VALIDITY_DAYS`      |         | Default `7`.                                        |
 | `SMS_WEBHOOK_URL/TOKEN`    | token ✅| SMS gateway.                                        |
 | `EMAIL_WEBHOOK_URL/TOKEN`  | token ✅| Email gateway.                                      |
+| `ID_EXTRACTION_PROVIDER`   |         | Leave unset. `off` stops IDs being read at all.     |
+| `GOOGLE_VISION_API_KEY`    | ✅      | Development only — on Cloud Run the service account is used instead. |
 
 ---
 
@@ -193,7 +241,8 @@ If you'd rather not run the script, these are the same steps.
 gcloud config set project YOUR_PROJECT_ID
 gcloud services enable run.googleapis.com sqladmin.googleapis.com `
   artifactregistry.googleapis.com cloudbuild.googleapis.com `
-  secretmanager.googleapis.com storage.googleapis.com iamcredentials.googleapis.com
+  secretmanager.googleapis.com storage.googleapis.com iamcredentials.googleapis.com `
+  vision.googleapis.com
 
 # 2. Cloud SQL (MySQL 8) — takes 5-10 minutes
 gcloud sql instances create ml-autoquote-db `
@@ -214,7 +263,8 @@ gcloud artifacts repositories create ml-autoquote `
 # 5. Service account
 gcloud iam service-accounts create ml-autoquote --display-name="AutoQuote runtime"
 # then grant: roles/cloudsql.client, roles/secretmanager.secretAccessor,
-#             roles/storage.objectAdmin, roles/iam.serviceAccountTokenCreator
+#             roles/storage.objectAdmin, roles/iam.serviceAccountTokenCreator,
+#             roles/serviceusage.serviceUsageConsumer
 
 # 6. Secrets (see the table above for the DATABASE_URL format)
 

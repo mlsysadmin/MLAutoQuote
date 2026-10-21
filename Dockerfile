@@ -59,6 +59,13 @@ COPY --from=builder /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
+# Tesseract — the ID reader that needs no credentials — picks its WebAssembly
+# build at runtime from what the CPU supports, so the tracer never sees the
+# import and leaves all of it out of the standalone bundle. Without this, IDs
+# read fine in development and silently stop reading here. ~44 MB, because
+# pinning one variant would crash on a host without that instruction set.
+COPY --from=builder /app/node_modules/tesseract.js-core ./node_modules/tesseract.js-core
+
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 
