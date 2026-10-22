@@ -25,9 +25,26 @@ const flags = ["--use-system-ca", process.env.NODE_OPTIONS]
   .filter(Boolean)
   .join(" ");
 
-const child = spawn("npx", ["next", "dev", ...process.argv.slice(2)], {
+/**
+ * 3400 unless told otherwise.
+ *
+ * Not Next's default of 3000, because `APP_URL` in .env is baked into every
+ * offer link we text and email. A server on the wrong port doesn't fail —
+ * it serves a site whose links all point somewhere nothing is listening.
+ */
+const args = process.argv.slice(2);
+const port = args.includes("-p") || args.includes("--port")
+  ? []
+  : ["-p", process.env.PORT ?? "3400"];
+
+// One command string through a shell, rather than a command plus an argument
+// array. Windows refuses to spawn a .cmd shim without a shell at all, and
+// passing an array *with* one makes Node warn that the arguments are
+// concatenated unescaped — so they are concatenated here, deliberately, from
+// values this file controls.
+const child = spawn(["npx", "next", "dev", ...port, ...args].join(" "), {
   stdio: "inherit",
-  shell: process.platform === "win32",
+  shell: true,
   env: { ...process.env, NODE_OPTIONS: flags },
 });
 
