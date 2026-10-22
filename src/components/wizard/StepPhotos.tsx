@@ -1,0 +1,666 @@
+"use client";
+
+import { useCallback, useRef, useState } from "react";
+import { Alert } from "@/components/ui";
+import {
+  photoSlotsFor,
+  requiredSlotsFor,
+  slotHoldsOnePhoto,
+  type Draft,
+  type PhotoSlotSpec,
+} from "@/lib/wizard";
+import { isTwoThreeWheel, vehicleNoun } from "@/lib/vehicle-class";
+import { prepareImage, formatBytes, withConcurrency } from "@/lib/image-client";
+import { StepHeading, Panel } from "./StepShell";
+import { SlotGuide } from "./SlotGuides";
+
+export type UploadedPhoto = {
+  /** Local id until the server confirms, then the Photo row id. */
+  key: string;
+  id: string | null;
+  slot: string;
+  previewUrl: string;
+  status: "preparing" | "uploading" | "done" | "error";
+  progress: number;
+  error?: string;
+  savedBytes?: number;
+  /**
+   * The file as it came off the camera. Kept so that turning the photo starts
+   * from the original every time: four turns gets the original back, not four
+   * generations of lossy re-encoding. It is a handle to bytes already on the
+   * device, so holding it costs nothing.
+   */
+  file?: File;
+  /** Quarter turns clockwise the customer has applied. */
+  rotation: number;
+};
+
+/** The paperwork answer each document slot stands in for. */
+const PAPER_ANSWER: Record<string, "hasCR" | "hasOR"> = {
+  DOC_CR: "hasCR",
+  DOC_OR: "hasOR",
+};
+
+export function StepPhotos({
+  submissionId,
+  ensureSubmission,
+  photos,
+  setPhotos,
+  draft,
+  set,
+}: {
+  submissionId: string | null;
+  ensureSubmission: () => Promise<string | null>;
+  photos: UploadedPhoto[];
+  setPhotos: React.Dispatch<React.SetStateAction<UploadedPhoto[]>>;
+  draft: Draft;
+  set: <K extends keyof Draft>(key: K, value: Draft[K]) => void;
+}) {
+  const [globalError, setGlobalError] = useState<string | null>(null);
+
+  // Slots where the customer has said they hold the document but have no
+  // photo of it. Deleting a photo must not quietly overturn that.
+  const heldWithoutPhoto = useRef(new Set<string>());
+
+  const missingPapers = draft.hasCR === false || draft.hasOR === false;
+
+  // Thumbnails are object URLs, and their lifetime belongs to the `photos`
+  // array — which lives in the wizard and outlives this component. This step
+  // unmounts every time the customer moves to another step, so revoking here
+  // would leave every thumbnail a broken image the moment they came back.
+  // Revoking happens where a photo is actually dropped: in `remove` below, and
+  // in the wizard when the whole form goes away.
+
+  const upload = useCallback(
+    async (slot: string, file: File) => {
+      const key = `${slot}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      setPhotos((prev) => [
+        ...prev,
+        {
+          key,
+          id: null,
+          slot,
+          previewUrl: "",
+          status: "preparing",
+          progress: 0,
+          file,
+          rotation: 0,
+        },
+      ]);
+
+      const patch = (next: Partial<UploadedPhoto>) =>
+        setPhotos((prev) =>
+          prev.map((p) => (p.key === key ? { ...p, ...next } : p)),
+        );
+
+      try {
+        // A government ID is a landscape card. Someone holding their phone
+        // upright produces a sideways photo that nobody can read, so that one
+        // slot is turned to landscape automatically.
+        const prepared = await prepareImage(file, {
+          preferLandscape: slot === "DOC_ID",
+        });
+        patch({
+          previewUrl: prepared.previewUrl,
+          status: "uploading",
+          savedBytes: prepared.originalBytes - prepared.blob.size,
+        });
+
+        const id = submissionId ?? (await ensureSubmission());
+        if (!id) throw new Error("offline");
+
+        const signRes = await fetch(`/api/submissions/${id}/photos/sign`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slot, contentType: prepared.contentType }),
+        });
+        if (!signRes.ok) throw new Error("sign failed");
+        const target = (await signRes.json()) as {
+          url: string;
+          method: string;
+          headers: Record<string, string>;
+          storageKey: string;
+        };
+
+        await putWithProgress(target, prepared.blob, (pct) =>
+          patch({ progress: pct }),
+        );
+
+        const confirmRes = await fetch(`/api/submissions/${id}/photos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slot,
+            storageKey: target.storageKey,
+            contentType: prepared.contentType,
+            bytes: prepared.blob.size,
+            width: prepared.width || null,
+            height: prepared.height || null,
+          }),
+        });
+        if (!confirmRes.ok) throw new Error("confirm failed");
+        const saved = (await confirmRes.json()) as { id: string };
+
+        patch({ id: saved.id, status: "done", progress: 100 });
+
+        // Photographing the CR is a better answer to "do you have the CR?"
+        // than ticking a box about it, so the question is never asked.
+        const answer = PAPER_ANSWER[slot];
+        if (answer) set(answer, true);
+      } catch {
+        patch({
+          status: "error",
+          error: "Upload didn't finish. Tap to try again.",
+        });
+        setGlobalError(
+          "One or more photos didn't upload. Check your connection and retry the ones marked in red.",
+        );
+      }
+    },
+    [submissionId, ensureSubmission, setPhotos, set],
+  );
+
+  /**
+   * Turns an uploaded photo a quarter clockwise and replaces it.
+   *
+   * Phones get orientation wrong often enough — a shot taken at an angle, a
+   * locked screen, a camera app that writes no EXIF at all — that an appraiser
+   * ends up tilting their head at someone's car. Rather than ask the customer
+   * to go back out to their gallery, fix it and upload again, they turn it
+   * here and we re-encode from the file they already chose.
+   *
+   * The new image goes up before the old row is deleted: if the connection
+   * drops halfway, they still have the photo they had, sideways.
+   */
+  const rotate = useCallback(
+    async (photo: UploadedPhoto) => {
+      if (!photo.file || photo.status !== "done") return;
+
+      const turns = photo.rotation + 1;
+      const previousUrl = photo.previewUrl;
+      const previousId = photo.id;
+
+      const patch = (next: Partial<UploadedPhoto>) =>
+        setPhotos((prev) =>
+          prev.map((p) => (p.key === photo.key ? { ...p, ...next } : p)),
+        );
+
+      patch({ status: "uploading", progress: 0 });
+
+      try {
+        const prepared = await prepareImage(photo.file, {
+          preferLandscape: photo.slot === "DOC_ID",
+          quarterTurns: turns,
+        });
+
+        // Show it turned straight away; the upload can finish in its own time.
+        patch({ previewUrl: prepared.previewUrl, rotation: turns });
+        if (previousUrl) URL.revokeObjectURL(previousUrl);
+
+        const id = submissionId ?? (await ensureSubmission());
+        if (!id) throw new Error("offline");
+
+        const signRes = await fetch(`/api/submissions/${id}/photos/sign`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slot: photo.slot,
+            contentType: prepared.contentType,
+          }),
+        });
+        if (!signRes.ok) throw new Error("sign failed");
+        const target = (await signRes.json()) as {
+          url: string;
+          method: string;
+          headers: Record<string, string>;
+          storageKey: string;
+        };
+
+        await putWithProgress(target, prepared.blob, (pct) =>
+          patch({ progress: pct }),
+        );
+
+        const confirmRes = await fetch(`/api/submissions/${id}/photos`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            slot: photo.slot,
+            storageKey: target.storageKey,
+            contentType: prepared.contentType,
+            bytes: prepared.blob.size,
+            width: prepared.width || null,
+            height: prepared.height || null,
+          }),
+        });
+        if (!confirmRes.ok) throw new Error("confirm failed");
+        const saved = (await confirmRes.json()) as { id: string };
+
+        patch({ id: saved.id, status: "done", progress: 100 });
+
+        if (previousId) {
+          try {
+            await fetch(`/api/photos/${previousId}`, { method: "DELETE" });
+          } catch {
+            // Orphaned at worst, and the appraiser sees the newest one.
+          }
+        }
+      } catch {
+        patch({
+          status: "error",
+          error: "Couldn't save the turn. Tap to upload again.",
+        });
+        setGlobalError(
+          "A photo didn't finish uploading. Check your connection and retry the one marked in red.",
+        );
+      }
+    },
+    // No `set` here: rotating replaces a photo that already answered its
+    // paperwork question, so the answer does not change.
+    [submissionId, ensureSubmission, setPhotos],
+  );
+
+  const remove = useCallback(
+    async (photo: UploadedPhoto) => {
+      setPhotos((prev) => prev.filter((p) => p.key !== photo.key));
+      // This photo is gone for good, so its thumbnail can be released.
+      if (photo.previewUrl) URL.revokeObjectURL(photo.previewUrl);
+
+      // The upload was the answer, so taking it away takes the answer with it
+      // — unless they have said they hold the document but can't photograph
+      // it, which is a separate claim they made on purpose.
+      const answer = PAPER_ANSWER[photo.slot];
+      if (answer && !heldWithoutPhoto.current.has(photo.slot)) set(answer, false);
+      if (photo.id) {
+        try {
+          await fetch(`/api/photos/${photo.id}`, { method: "DELETE" });
+        } catch {
+          // The row is orphaned at worst; it never reaches an appraiser.
+        }
+      }
+    },
+    [setPhotos, set],
+  );
+
+  const onFiles = useCallback(
+    async (slot: string, files: FileList | null) => {
+      if (!files || files.length === 0) return;
+      setGlobalError(null);
+
+      // The rule is the slot's own, not the class's: only the damage gallery
+      // takes more than one photo, on two wheels or four.
+      const allowMultiple = !slotHoldsOnePhoto(slot);
+
+      // Replacing a single-photo slot drops the old one first.
+      if (!allowMultiple) {
+        const existing = photos.filter((p) => p.slot === slot);
+        for (const old of existing) await remove(old);
+      }
+
+      const list = Array.from(files).slice(0, allowMultiple ? 6 : 1);
+      await withConcurrency(
+        list.map((file) => () => upload(slot, file)),
+        3,
+      );
+    },
+    [photos, upload, remove],
+  );
+
+  // A scooter has no engine bay and no back seat, so the grid is shorter and
+  // the required set smaller. One source for both.
+  const slots = photoSlotsFor(draft.vehicleClass);
+  const required = requiredSlotsFor(draft.vehicleClass);
+  const bike = isTwoThreeWheel(draft.vehicleClass);
+
+  const doneCount = photos.filter((p) => p.status === "done").length;
+  const requiredDone = required.filter((s) =>
+    photos.some((p) => p.slot === s && p.status === "done"),
+  ).length;
+  const totalSaved = photos.reduce((sum, p) => sum + (p.savedBytes ?? 0), 0);
+
+  const carSlots = slots.filter((s) => !("isDocument" in s && s.isDocument));
+  const docSlots = slots.filter((s) => "isDocument" in s && s.isDocument);
+
+  return (
+    <>
+      <StepHeading
+        title={`Show us the ${vehicleNoun(draft.vehicleClass)}`}
+        description={`Daylight, clean background, the whole ${vehicleNoun(
+          draft.vehicleClass,
+        )} in frame. Your phone resizes each photo before it uploads, so this is quick even on mobile data.`}
+      >
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold ring-1 ring-ink-200">
+            <span
+              className={
+                requiredDone === required.length
+                  ? "text-[var(--color-ok)]"
+                  : "text-ink-600"
+              }
+            >
+              {requiredDone} of {required.length} required done
+            </span>
+          </div>
+          {totalSaved > 1024 * 100 ? (
+            <span className="text-xs text-ink-500">
+              {formatBytes(totalSaved)} of data saved by resizing
+            </span>
+          ) : null}
+        </div>
+      </StepHeading>
+
+      {globalError ? (
+        <div className="mb-5">
+          <Alert tone="danger">{globalError}</Alert>
+        </div>
+      ) : null}
+
+      <Panel>
+        <h2 className="mb-4 text-sm font-bold uppercase tracking-wider text-ink-500">
+          {bike ? "The bike" : "The vehicle"}
+        </h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {carSlots.map((spec) => (
+            <SlotCard
+              key={spec.slot}
+              spec={spec}
+              photos={photos.filter((p) => p.slot === spec.slot)}
+              onFiles={onFiles}
+              onRemove={remove}
+              onRotate={rotate}
+            />
+          ))}
+        </div>
+      </Panel>
+
+      <Panel className="mt-5">
+        <h2 className="mb-1 text-sm font-bold uppercase tracking-wider text-ink-500">
+          Your papers
+        </h2>
+        <p className="mb-4 text-xs text-ink-500">
+          These stay private. Only the appraiser handling your unit can open
+          them.
+        </p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {docSlots.map((spec) => (
+            <SlotCard
+              key={spec.slot}
+              spec={spec}
+              photos={photos.filter((p) => p.slot === spec.slot)}
+              onFiles={onFiles}
+              onRemove={remove}
+              onRotate={rotate}
+              held={
+                PAPER_ANSWER[spec.slot]
+                  ? Boolean(draft[PAPER_ANSWER[spec.slot]])
+                  : undefined
+              }
+              // Only the CR and the OR stand in for a question. The ID slot is
+              // just a photo we need, so it gets no "I have it" tickbox.
+              onHeld={
+                PAPER_ANSWER[spec.slot]
+                  ? (value) => {
+                      const answer = PAPER_ANSWER[spec.slot];
+                      if (value) heldWithoutPhoto.current.add(spec.slot);
+                      else heldWithoutPhoto.current.delete(spec.slot);
+                      set(answer, value);
+                    }
+                  : undefined
+              }
+            />
+          ))}
+        </div>
+
+        {missingPapers ? (
+          <div className="mt-4">
+            <Alert tone="warn" title="That's workable">
+              Missing papers can be re-issued. We&apos;ll include the cost and
+              the steps in your offer so there are no surprises.
+            </Alert>
+          </div>
+        ) : null}
+      </Panel>
+
+      {doneCount > 0 ? (
+        <p className="mt-4 text-center text-xs text-ink-500">
+          {doneCount} photo{doneCount === 1 ? "" : "s"} uploaded
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+function SlotCard({
+  spec,
+  photos,
+  onFiles,
+  onRemove,
+  onRotate,
+  held,
+  onHeld,
+}: {
+  spec: PhotoSlotSpec;
+  photos: UploadedPhoto[];
+  onFiles: (slot: string, files: FileList | null) => void;
+  onRemove: (photo: UploadedPhoto) => void;
+  onRotate: (photo: UploadedPhoto) => void;
+  /** For a document slot: whether the customer says they hold it. */
+  held?: boolean;
+  onHeld?: (value: boolean) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const multiple = "multiple" in spec && spec.multiple;
+  const primary = photos[0];
+  const filled = primary?.status === "done";
+  const busy =
+    primary?.status === "preparing" || primary?.status === "uploading";
+  const failed = primary?.status === "error";
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        aria-label={`${filled ? "Replace" : "Add"} photo: ${spec.label}`}
+        className={`group relative block aspect-4/3 w-full overflow-hidden rounded-xl ring-1 ring-inset transition-all ${
+          failed
+            ? "bg-ml-red-50 ring-2 ring-ml-red-400"
+            : filled
+              ? "bg-ink-900 ring-ink-900"
+              : "bg-ink-50 ring-dashed ring-ink-300 hover:bg-ink-100 hover:ring-ink-400"
+        }`}
+      >
+        {primary?.previewUrl ? (
+          // Local object URL — no network round trip for the thumbnail.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={primary.previewUrl}
+            alt=""
+            className={`size-full object-cover transition-opacity ${
+              busy ? "opacity-50" : "opacity-100"
+            }`}
+          />
+        ) : (
+          // The framing guide: a line drawing of the shot we're asking for.
+          <span className="relative flex size-full items-center justify-center px-3 py-2">
+            <SlotGuide
+              slot={spec.slot}
+              className="size-full text-ink-300 transition-colors group-hover:text-ml-red-300"
+            />
+            <span className="absolute bottom-1.5 right-1.5 flex size-6 items-center justify-center rounded-full bg-white/80 text-ink-500 shadow-sm">
+              <svg viewBox="0 0 24 24" className="size-3.5" aria-hidden="true">
+                <path
+                  d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.2a1 1 0 0 0 .8-.4l.9-1.2a1 1 0 0 1 .8-.4h3.6a1 1 0 0 1 .8.4l.9 1.2a1 1 0 0 0 .8.4h1.2A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-8Z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                />
+                <circle
+                  cx="12"
+                  cy="12.5"
+                  r="3.2"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                />
+              </svg>
+            </span>
+          </span>
+        )}
+
+        {busy ? (
+          <span className="absolute inset-x-2 bottom-2 h-1.5 overflow-hidden rounded-full bg-white/40">
+            <span
+              className="block h-full rounded-full bg-white transition-[width] duration-200"
+              style={{ width: `${Math.max(primary.progress, 8)}%` }}
+            />
+          </span>
+        ) : null}
+
+        {filled ? (
+          <span className="absolute right-2 top-2 flex size-6 items-center justify-center rounded-full bg-white/95 shadow-sm">
+            <svg
+              viewBox="0 0 16 16"
+              className="size-3.5 text-[var(--color-ok)]"
+              aria-hidden="true"
+            >
+              <path
+                d="m3.5 8.5 3 3 6-7"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+        ) : null}
+
+        {multiple && photos.length > 1 ? (
+          <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[0.7rem] font-bold text-white nums">
+            {photos.length}
+          </span>
+        ) : null}
+      </button>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        multiple={multiple}
+        capture={"isDocument" in spec && spec.isDocument ? undefined : "environment"}
+        className="sr-only"
+        onChange={(e) => {
+          onFiles(spec.slot, e.target.files);
+          e.target.value = "";
+        }}
+      />
+
+      <div className="mt-1.5 px-0.5">
+        <p className="flex items-center gap-1 text-xs font-semibold text-ink-800">
+          {spec.label}
+          {spec.required ? (
+            <span className="text-ml-red-600" aria-label="required">
+              *
+            </span>
+          ) : null}
+        </p>
+        <p className="mt-0.5 line-clamp-2 text-[0.7rem] leading-snug text-ink-500">
+          {failed ? primary.error : spec.hint}
+        </p>
+
+        {/* A photographed CR answers "do you have the CR?" on its own. This is
+            for the customer who has the document but not to hand — without it
+            they would be recorded as having no papers, and docked for it. */}
+        {onHeld && !filled ? (
+          <label className="mt-1.5 flex cursor-pointer items-start gap-1.5 text-[0.7rem] leading-snug text-ink-600">
+            <input
+              type="checkbox"
+              checked={Boolean(held)}
+              onChange={(e) => onHeld(e.target.checked)}
+              className="mt-0.5 size-3.5 shrink-0 accent-[var(--color-ml-red-600)]"
+            />
+            I have it, just not with me
+          </label>
+        ) : null}
+        {/* Kept visible while a turn uploads, rather than disappearing and
+            shifting the grid under the customer's thumb. */}
+        {filled || (busy && primary?.id) ? (
+          <div
+            className={`mt-1 flex items-center gap-3 ${busy ? "opacity-40" : ""}`}
+          >
+            {/* Turning re-encodes from the file the customer picked. A photo
+                restored from the server on a later visit has no such file
+                here, so there is nothing to turn and no button to offer. */}
+            <button
+              type="button"
+              disabled={busy}
+              hidden={!primary?.file}
+              onClick={() => onRotate(primary)}
+              aria-label={`Turn ${spec.label} a quarter clockwise`}
+              className="flex items-center gap-1 text-[0.7rem] font-semibold text-ink-600 hover:text-ink-900 hover:underline disabled:hover:no-underline"
+            >
+              <svg viewBox="0 0 16 16" className="size-3" aria-hidden="true">
+                <path
+                  d="M13 6.5A5.5 5.5 0 1 1 11 3.2"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M12.6 1v2.6H10"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              Rotate
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onRemove(primary)}
+              className="text-[0.7rem] font-semibold text-ml-red-600 hover:underline disabled:hover:no-underline"
+            >
+              Remove
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * fetch() can't report upload progress, and a customer watching a still
+ * thumbnail on a slow connection assumes it has hung. XHR gives us the bytes.
+ */
+function putWithProgress(
+  target: { url: string; method: string; headers: Record<string, string> },
+  blob: Blob,
+  onProgress: (pct: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(target.method, target.url, true);
+    for (const [k, v] of Object.entries(target.headers)) {
+      xhr.setRequestHeader(k, v);
+    }
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new Error(`upload ${xhr.status}`));
+    xhr.onerror = () => reject(new Error("network"));
+    xhr.ontimeout = () => reject(new Error("timeout"));
+    xhr.timeout = 120_000;
+    xhr.send(blob);
+  });
+}

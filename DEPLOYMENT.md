@@ -121,6 +121,81 @@ Roles:
 
 ---
 
+## Turning on email
+
+**Until this is set, offers are not delivered.** The app writes each message to
+Cloud Logging and carries on — the submission still reads "Offer sent", the
+appraiser sees nothing wrong, and the customer never hears from us. The
+Settings page in the appraiser portal says plainly which of the three states
+you are in, and has a **Send test** button.
+
+### The two-minute route: a sending service
+
+No admin console, no 2-factor dance, and it works from Cloud Run and from
+behind a corporate firewall — which SMTP often doesn't, since many networks
+silently drop outbound port 25.
+
+1. Sign up at [resend.com](https://resend.com) (free tier: 3,000 emails a
+   month, which is 3,000 offers).
+2. Copy the API key it gives you — it starts `re_`.
+3. Put it in `EMAIL_API_KEY` and restart.
+
+For testing you can send from `onboarding@resend.dev` without verifying
+anything. To send as `@mlhuillier.com` — which you want before customers see
+it — add the domain in their dashboard and publish the DNS records it asks
+for. That is the same SPF/DKIM work any route needs.
+
+```powershell
+echo "re_your_key_here" | gcloud secrets create autoquote-email-api-key --data-file=-
+gcloud run services update ml-autoquote --region=asia-southeast1 `
+  --update-secrets="EMAIL_API_KEY=autoquote-email-api-key:latest"
+```
+
+`EMAIL_API_URL` overrides the endpoint if you use a different provider with
+the same request shape; anything stranger goes through `EMAIL_WEBHOOK_URL`.
+
+### Or your existing mail server
+
+Slower to arrange, but nothing new to sign up for:
+
+```powershell
+gcloud run services update ml-autoquote --region=asia-southeast1 `
+  --update-env-vars="SMTP_HOST=smtp.gmail.com,SMTP_PORT=587,SMTP_USER=autoquote@mlhuillier.com,EMAIL_FROM=M Lhuillier AutoQuote <autoquote@mlhuillier.com>" `
+  --update-secrets="SMTP_PASSWORD=autoquote-smtp-password:latest"
+```
+
+Store the password as a secret, never as an environment variable:
+
+```powershell
+echo "your-app-password" | gcloud secrets create autoquote-smtp-password --data-file=-
+gcloud secrets add-iam-policy-binding autoquote-smtp-password `
+  --member="serviceAccount:ml-autoquote@YOUR_PROJECT_ID.iam.gserviceaccount.com" `
+  --role="roles/secretmanager.secretAccessor"
+```
+
+| Host | Port | Notes |
+| --- | --- | --- |
+| Google Workspace | `smtp.gmail.com:587` | Needs an **app password**, not the account password — 2FA must be on. |
+| Microsoft 365 | `smtp.office365.com:587` | SMTP AUTH must be enabled for the mailbox. |
+| Amazon SES | `email-smtp.<region>.amazonaws.com:587` | Use SES SMTP credentials, not your AWS keys. |
+
+Port 465 is used as implicit TLS; anything else negotiates STARTTLS and the
+connection is refused if the server won't encrypt. The one exception is a
+relay on `localhost`, where there is no network to protect.
+
+Deliverability is about the sending domain, not this app: publish SPF and DKIM
+for whatever address you put in `EMAIL_FROM`, or Gmail will file M Lhuillier's
+offers as spam.
+
+If you'd rather keep using a gateway you already run, set `EMAIL_WEBHOOK_URL`
+instead and leave `SMTP_HOST` empty. It receives:
+
+```json
+{ "to": "juan@example.com", "subject": "Your M Lhuillier offer is ready", "text": "...", "html": "..." }
+```
+
+---
+
 ## Turning on SMS
 
 Offers are useless if the customer never hears about them. The app posts to a
@@ -225,6 +300,9 @@ Set as Cloud Run environment variables, or from Secret Manager where marked.
 | `COMPARABLES_INGEST_TOKEN` | ✅      | Enables `POST /api/ingest/comparables`.             |
 | `VALUATION_BUY_MARGIN`     |         | Share of market mid to start from. Default `0.82`.  |
 | `OFFER_VALIDITY_DAYS`      |         | Default `7`.                                        |
+| `SMTP_HOST/PORT/USER`      |         | Mail server. Set these and offers are delivered by email. |
+| `SMTP_PASSWORD`            | ✅      | Mailbox or app password.                            |
+| `EMAIL_FROM`               |         | The address customers see. Needs SPF/DKIM on its domain. |
 | `SMS_WEBHOOK_URL/TOKEN`    | token ✅| SMS gateway.                                        |
 | `EMAIL_WEBHOOK_URL/TOKEN`  | token ✅| Email gateway.                                      |
 | `ID_EXTRACTION_PROVIDER`   |         | Leave unset. `off` stops IDs being read at all.     |
@@ -345,3 +423,23 @@ want protection against accidental deletion:
 ```powershell
 gcloud storage buckets update gs://YOUR_PROJECT_ID-autoquote-photos --versioning
 ```
+
+---
+
+## If outbound HTTPS fails in development
+
+Symptom: the Settings page says a service is connected, but a test gives
+`UNABLE_TO_VERIFY_LEAF_SIGNATURE` or a bare "fetch failed".
+
+Security software that scans web traffic — AVG's Web/Mail Shield, Zscaler,
+Fortinet — intercepts HTTPS and re-signs it with a root certificate it
+installs into Windows. Browsers accept it; Node ships its own certificate
+list and does not, so every outbound call from the server fails while the
+same URL loads fine in a browser.
+
+`npm run dev` already handles this: it starts Node with `--use-system-ca`, so
+Node trusts exactly what the machine trusts. Certificates are still verified
+— nothing is bypassed. See [scripts/dev.mjs](scripts/dev.mjs).
+
+Cloud Run has no interception, so production is unaffected and runs
+`next start` without the flag.
