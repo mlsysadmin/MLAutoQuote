@@ -3,7 +3,53 @@
 Everything needed to build and deploy the platform to Google Cloud Run.
 Nothing in here is secret: no `.env`, no keys, no database contents.
 
-**Packaged:** 20 October 2026
+---
+
+## START HERE — deploy with this, not `gcloud run deploy`
+
+```powershell
+powershell -File scripts/deploy.ps1 -ProjectId YOUR_PROJECT_ID
+```
+
+That one command attaches the database secret, the Cloud SQL instance and the
+session secret, then applies migrations as a one-off job.
+
+**Deploying the image any other way — the Cloud Console, a bare
+`gcloud run deploy` — produces a revision with no `DATABASE_URL`.** The site
+comes up, every page renders, and every submission fails with:
+
+```
+error: Environment variable not found: DATABASE_URL
+Invalid `prisma.submission.create()` invocation
+```
+
+The customer sees "We couldn't reach our servers" after filling in the whole
+form. Nothing in Cloud Run reports a problem, because the container is healthy
+— it simply has no database.
+
+### Already deployed and seeing that error?
+
+```powershell
+powershell -File scripts/repair-production.ps1 -ProjectId YOUR_PROJECT_ID
+```
+
+It changes nothing else: no rebuild, no new image. It reports what the service
+is missing, supplies only that, and then asks the service whether it is well.
+Safe to run twice. Add `-WhatIfOnly` to see the diagnosis without changing
+anything.
+
+### Check at any time
+
+```
+https://<your-cloud-run-url>/api/health/ready
+```
+
+| It says | Meaning |
+| --- | --- |
+| `"status":"ready"` | Database reachable, schema current. |
+| `"database":"unconfigured"` | **No `DATABASE_URL`** — run the repair script. |
+| `"database":"unreachable"` | Cloud SQL is down or the connection name is wrong. |
+| `"migrations":"pending"` with names | Run `scripts/migrate-job.ps1`. |
 
 ---
 

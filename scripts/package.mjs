@@ -174,7 +174,11 @@ const files = walk(ROOT)
 const zip = buildZip(files);
 
 mkdirSync(OUT_DIR, { recursive: true });
-for (const old of readdirSync(OUT_DIR).filter((f) => f.endsWith(".zip"))) {
+// Only our own older builds. `dist/` also holds the laptop clone kit, and
+// sweeping every .zip here once deleted a 108 MB kit that had just been made.
+for (const old of readdirSync(OUT_DIR).filter(
+  (f) => f.startsWith("ml-autoquote-cloudrun-") && f.endsWith(".zip"),
+)) {
   rmSync(join(OUT_DIR, old));
 }
 

@@ -26,10 +26,14 @@ export function SiteHeader() {
           >
             Car values
           </Link>
+          {/* min-h-11 (44px) rather than padding alone: at text-sm the padded
+              height came out 36px, under what a thumb reliably hits. These
+              customers are one-handed on a phone, often stood next to the
+              car they are selling. */}
           <Link
             href="/track"
             prefetch={false}
-            className="whitespace-nowrap rounded-full px-2.5 py-2 text-sm font-semibold text-ink-700 transition-colors hover:bg-ink-100 sm:px-3"
+            className="inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-3 text-sm font-semibold text-ink-700 transition-colors hover:bg-ink-100"
           >
             Track
             <span className="hidden sm:inline"> offer</span>

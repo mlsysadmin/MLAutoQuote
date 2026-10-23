@@ -443,3 +443,53 @@ Node trusts exactly what the machine trusts. Certificates are still verified
 
 Cloud Run has no interception, so production is unaffected and runs
 `next start` without the flag.
+
+---
+
+## "We couldn't reach our servers" in production
+
+The customer sees it on submit. It almost never means what it says — the
+server was reached, it returned an error, and the old copy blamed the
+connection. (The wizard now distinguishes the two: a server fault says so.)
+
+**Check this first.** Open the readiness endpoint on the deployed service:
+
+```
+https://<your-cloud-run-url>/api/health/ready
+```
+
+It answers in one line:
+
+| What it says | What to do |
+| --- | --- |
+| `"status":"ready"` | The schema is fine; look at the Cloud Run logs for the failing request. |
+| `"migrations":"pending"` with a `pending` list | **The usual cause.** The image ships migrations the database doesn't have, so every query selecting a new column fails. Run `scripts/migrate-job.ps1`. |
+| `"migrations":"missing"` | The schema was never applied at all. Same fix. |
+| `"database":"unreachable"` | Cloud SQL is down, or `DATABASE_URL` / the instance connection name is wrong. |
+| `"database":"unconfigured"` | **The revision has no database at all** — it was deployed without its secrets. This is what happened on 22 Oct 2026. Run the repair script below. |
+
+The pending case is easy to create: the service deliberately boots with
+`SKIP_MIGRATIONS=true` so a cold database can't stop a revision from starting,
+and `deploy.ps1` runs the migration job afterwards. Deploy by any other route —
+`gcloud run deploy` straight from an image, say — and nothing applies them.
+
+```powershell
+powershell -File scripts/migrate-job.ps1
+```
+
+Then re-check the endpoint. It should read `"status":"ready"`.
+
+### One command that checks and fixes all of it
+
+Rather than working through the table by hand:
+
+```powershell
+powershell -File scripts/repair-production.ps1 -ProjectId YOUR_PROJECT_ID
+```
+
+It reports what the service is missing, supplies only that — the secrets,
+the Cloud SQL attachment, the database password, pending migrations, APP_URL
+— and then asks the service whether it is actually well. It builds no image
+and changes nothing already correct, so it is safe to run twice.
+
+To see the diagnosis without changing anything, add `-WhatIfOnly`.

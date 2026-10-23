@@ -19,7 +19,8 @@
     "setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
     "test": "tsx --test src/lib/**/*.test.ts",
     "photos:backfill": "tsx --env-file-if-exists=.env prisma/backfill-photos.ts",
-    "package": "node scripts/package.mjs"
+    "package": "node scripts/package.mjs",
+    "laptop-kit": "node scripts/make-laptop-kit.mjs"
   },
   "prisma": {
     "seed": "tsx --env-file-if-exists=.env prisma/seed.ts"

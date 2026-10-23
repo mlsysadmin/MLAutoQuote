@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -6,12 +8,16 @@ export const dynamic = "force-dynamic";
  * Readiness.
  *
  * Can the service actually do its job — is the database reachable and is the
- * schema applied? Point monitoring and alerting here, not a startup probe:
- * returning 503 from a startup probe would stop a revision that is serving the
- * public pages perfectly well from ever going live.
+ * schema the one this build expects? Point monitoring and alerting here, not
+ * a startup probe: returning 503 from a startup probe would stop a revision
+ * that is serving the public pages perfectly well from ever going live.
  *
- * The migration check is what catches a deploy where the container started
- * with SKIP_MIGRATIONS and nobody ran the job afterwards.
+ * The migration check compares the migrations in this image against the ones
+ * recorded in the database, and names the difference. Counting rows was not
+ * enough: a deploy that adds two migrations and never runs the job leaves a
+ * database that is "migrated" by any count, and an app whose every query
+ * selects a column that isn't there. The symptom is a customer told to check
+ * their internet connection; the cause is one line of output away.
  */
 export async function GET() {
   const started = Date.now();
@@ -36,33 +42,79 @@ export async function GET() {
         status: "not-ready",
         database: "unreachable",
         latencyMs: Date.now() - started,
+        detail:
+          "The database did not answer. Check the Cloud SQL instance and the connection name in DATABASE_URL.",
       },
       { status: 503, headers: { "Cache-Control": "no-store" } },
     );
   }
 
-  // A missing _prisma_migrations table means the schema was never applied.
-  let migrations: "applied" | "missing" | "unknown" = "unknown";
+  let applied: string[];
   try {
-    const rows = await prisma.$queryRawUnsafe<Array<{ n: bigint }>>(
-      "SELECT COUNT(*) AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL",
+    const rows = await prisma.$queryRawUnsafe<Array<{ migration_name: string }>>(
+      "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL",
     );
-    migrations = Number(rows[0]?.n ?? 0) > 0 ? "applied" : "missing";
+    applied = rows.map((r) => r.migration_name);
   } catch {
-    migrations = "missing";
+    // No _prisma_migrations table at all: the schema was never applied.
+    return Response.json(
+      {
+        status: "not-ready",
+        database: "reachable",
+        migrations: "missing",
+        latencyMs: Date.now() - started,
+        detail: "The schema has never been applied. Run scripts/migrate-job.ps1.",
+      },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
   }
 
-  const ready = migrations === "applied";
+  const pending = expectedMigrations().filter((m) => !applied.includes(m));
+
+  if (pending.length > 0) {
+    return Response.json(
+      {
+        status: "not-ready",
+        database: "reachable",
+        migrations: "pending",
+        pending,
+        latencyMs: Date.now() - started,
+        detail:
+          `${pending.length} migration(s) in this build are not in the database, ` +
+          "so queries will fail on the columns they add. Run scripts/migrate-job.ps1.",
+      },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+
   return Response.json(
     {
-      status: ready ? "ready" : "not-ready",
+      status: "ready",
       database: "reachable",
-      migrations,
+      migrations: "applied",
+      migrationCount: applied.length,
       latencyMs: Date.now() - started,
-      ...(ready
-        ? {}
-        : { detail: "Schema not applied. Run scripts/migrate-job.ps1." }),
     },
-    { status: ready ? 200 : 503, headers: { "Cache-Control": "no-store" } },
+    { status: 200, headers: { "Cache-Control": "no-store" } },
   );
+}
+
+/**
+ * The migration folders shipped in this image.
+ *
+ * The Dockerfile copies `prisma/` in precisely so the container can apply
+ * them; reading the same directory is how the app knows what it expects.
+ * Returning nothing on failure is deliberate — an unreadable directory must
+ * not make a healthy service report itself unready.
+ */
+function expectedMigrations(): string[] {
+  try {
+    return readdirSync(join(process.cwd(), "prisma", "migrations"), {
+      withFileTypes: true,
+    })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+  } catch {
+    return [];
+  }
 }

@@ -354,6 +354,24 @@ export function OfferEditor({
   const sentAmount =
     offer.finalOfferPhp ?? offer.appraiserOfferPhp ?? offer.systemOfferPhp;
 
+  /**
+   * What is stopping this revision from being sent, if anything.
+   *
+   * Mirrors the server's checks in the same order, so the button is never
+   * live for a request that will be refused. The first version gated on the
+   * note alone: an uplift with no reason left the button enabled, failed at
+   * the server, and told the appraiser nothing about which field it meant.
+   */
+  const reviseBlocked: "same" | "reason" | "note" | null =
+    reviseAmount === sentAmount
+      ? "same"
+      : requiresJustification(reviseAmount, offer.systemOfferPhp) &&
+          !reviseReason
+        ? "reason"
+        : reviseNote.trim().length < MIN_OVERRIDE_NOTE_LENGTH
+          ? "note"
+          : null;
+
   const delta = amount - offer.systemOfferPhp;
 
   // The band shown is the live one — recomputed from whatever is included in
@@ -911,10 +929,7 @@ export function OfferEditor({
                   <Button
                     size="sm"
                     loading={busy === "revise"}
-                    disabled={
-                      reviseAmount === sentAmount ||
-                      reviseNote.trim().length < MIN_OVERRIDE_NOTE_LENGTH
-                    }
+                    disabled={Boolean(reviseBlocked)}
                     onClick={revise}
                   >
                     Send the revised offer
@@ -930,6 +945,14 @@ export function OfferEditor({
                     Cancel
                   </button>
                 </div>
+
+                {reviseBlocked && reviseBlocked !== "same" ? (
+                  <p className="mt-2 text-xs text-ink-600">
+                    {reviseBlocked === "reason"
+                      ? "Choose a reason above — this is over the system's recommendation."
+                      : "Say why it's changing, in a sentence or more."}
+                  </p>
+                ) : null}
               </div>
             ) : null}
 

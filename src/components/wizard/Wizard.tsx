@@ -297,6 +297,12 @@ export function Wizard({
   }, [undo, redo]);
 
   // ── Creating the server-side draft ─────────────────────────────────────────
+  // Why the last attempt to reach the server failed, so the customer is told
+  // something true. "Check your connection" sends someone to reboot their
+  // router while the actual fault is a 500 on a server they reached perfectly
+  // well — which is exactly what happened on the first production deploy.
+  const lastFailure = useRef<"offline" | "server" | null>(null);
+
   const ensureSubmission = useCallback(async (): Promise<string | null> => {
     if (submissionId) return submissionId;
     try {
@@ -305,12 +311,19 @@ export function Wizard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draft),
       });
-      if (!res.ok) return null;
+      if (!res.ok) {
+        lastFailure.current = "server";
+        console.error("create submission failed", res.status, await res.text());
+        return null;
+      }
       const body = (await res.json()) as { id: string; refCode: string };
+      lastFailure.current = null;
       setSubmissionId(body.id);
       setRefCode(body.refCode);
       return body.id;
-    } catch {
+    } catch (err) {
+      lastFailure.current = "offline";
+      console.error("create submission could not reach the server", err);
       return null;
     }
   }, [submissionId, draft]);
@@ -357,7 +370,11 @@ export function Wizard({
   const submit = useCallback(async () => {
     const id = submissionId ?? (await ensureSubmission());
     if (!id) {
-      setSubmitError("We couldn't reach our servers. Check your connection and try again.");
+      setSubmitError(
+        lastFailure.current === "server"
+          ? "Something went wrong at our end — this isn't your connection. Your answers are saved. Please try again, or call the branch with your reference."
+          : "We couldn't reach our servers. Check your connection and try again.",
+      );
       return;
     }
 
